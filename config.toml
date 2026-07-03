@@ -1,0 +1,34 @@
+# Vanni — local dictation config
+
+[hotkeys]
+dictate = "ctrl+windows"        # hold to record, release to transcribe+format+inject
+dictate_raw = "ctrl+alt+windows" # hold: same but always skips the LLM formatter
+
+[asr]
+model = "large-v3-turbo"        # faster-whisper model id; fallbacks tried automatically
+compute_type = "int8_float16"
+language = "en"                 # set "auto" for multilingual (see README)
+# Silero voice-activity detection (bundled with faster-whisper, auto-downloads
+# on first use, fully offline). Trims silence before transcription — cheaper
+# and less hallucination-prone, especially on low-spec CPU-only machines.
+vad = true
+
+[formatter]
+model = "phi3.5"                # Ollama model for cleanup; benchmarked fastest of 5 candidates (~300ms vs qwen3.5:4b's ~1740ms)
+fallback_model = "qwen2.5:3b"    # for <8GB VRAM machines; same-family control, non-thinking, ~900ms
+word_skip_threshold = 10        # utterances under this many words skip the LLM
+enabled = true
+# -1 keeps the LLM in VRAM forever (fast but holds ~3.2GB). Set "10m" to free
+# VRAM when idle — first cleanup after idle then costs a ~5s reload.
+keep_alive = -1
+# 127.0.0.1, not localhost: Windows tries IPv6 ::1 first and stalls ~2s per call
+ollama_url = "http://127.0.0.1:11434"
+
+[audio]
+min_seconds = 0.3               # discard shorter recordings (hallucination gate)
+
+[history]
+# Local dictation log: history/YYYY-MM-DD.md next to the exe — raw transcript,
+# corrections that fired, final text. Never leaves this machine; doubles as a
+# training corpus for future ML on your own speech patterns.
+enabled = true

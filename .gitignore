@@ -1,0 +1,19 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Build artifacts (regenerate via Vanni.spec / installer.iss — see README)
+build/
+dist/
+Output/
+*.spec.bak
+
+# Runtime / user data — never commit someone's actual dictation
+history/
+.setup_done
+
+# Personal/session tooling not part of the app
+.claude/
+storm-reports/
+benchmark_results.json
