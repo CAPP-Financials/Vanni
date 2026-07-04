@@ -21,7 +21,7 @@ vad = true
 vocabulary = ["Vanni", "Ollama"]
 
 [formatter]
-model = "phi3.5"                # Ollama model for cleanup; benchmarked fastest of 5 candidates (~300ms vs qwen3.5:4b's ~1740ms)
+model = "gemma2:2b"             # Ollama model for cleanup (punctuation only). Fidelity shootout 2026-07-05: gemma2:2b was the only small model that punctuates WITHOUT rewording casual speech (phi3.5 swaps in "professional" synonyms); also smaller and just as fast (~0.4s warm)
 fallback_model = "qwen2.5:3b"    # for <8GB VRAM machines; same-family control, non-thinking, ~900ms
 # Model for assist-mode transforms (translate/summarize/rewrite). Benchmarked
 # 2026-07-04: qwen2.5:3b beat phi3.5 on CJK translation (phi3.5 mistranslated

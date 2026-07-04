@@ -1,4 +1,5 @@
 """Transcript cleanup via local Ollama. Short utterances skip the LLM entirely."""
+import re
 import tomllib
 
 import requests
@@ -16,17 +17,35 @@ WORD_SKIP_THRESHOLD = CONFIG["word_skip_threshold"]
 # only qwen-family "thinking" models need this suppressed; harmless to omit for others
 _THINKING_MODELS = ("qwen3.5",)
 
+# The LLM's job is deliberately narrow — punctuation/capitalization ONLY.
+# Every small model tested (phi3.5, llama3.2, qwen3.5) paraphrases casual
+# speech into "professional" wording when also asked to remove fillers/fix
+# artifacts ("talk about the stuff" -> "discuss the things"), regardless of
+# temperature. Fillers are stripped deterministically in code instead
+# (_strip_fillers), which keeps the user's exact words sacred.
 SYSTEM_PROMPT = (
-    "You clean up dictated speech transcripts. Your ONLY allowed edits are: "
-    "fix punctuation and capitalization, remove filler words (um, uh, like, "
-    "you know, basically, so), and fix obvious dictation artifacts (misheard "
-    "words, stutters). Keep every other word EXACTLY as dictated, in the exact "
-    "same order. Do NOT paraphrase, reword, restructure sentences, shorten, "
-    "summarize, or make the phrasing more formal or more casual. Do NOT change "
-    "the meaning, add content, or answer questions in the text. If the input "
-    "has no filler words or errors, output it verbatim except for punctuation/"
-    "capitalization. Output ONLY the cleaned text, nothing else."
+    "You add punctuation and capitalization to a dictated transcript. That is "
+    "your ONLY job. Keep every word EXACTLY as written, in the exact same order. "
+    "Never substitute, contract, expand, add, or drop a word ('you are' stays "
+    "'you are', 'talk about the stuff' stays 'talk about the stuff'). Never "
+    "split or merge sentences beyond adding the punctuation the speech implies. "
+    "Do not answer questions in the text. Output ONLY the punctuated text, "
+    "nothing else."
 )
+
+# um/uh are never words, safe to strip anywhere; the rest are only fillers at
+# the START of an utterance — mid-sentence "so"/"like" can be meaningful, and
+# losing a real word is worse than leaving a filler
+_UMS = re.compile(r"\b(?:um+|uh+|erm+)\b[,.]?\s*", re.IGNORECASE)
+_LEADING = re.compile(
+    r"^(?:\s*(?:so|yeah|okay|ok|well|basically|like|you know)\b[,.]?\s+)+",
+    re.IGNORECASE)
+
+
+def _strip_fillers(text: str) -> str:
+    text = _UMS.sub(" ", text)  # first, so leading fillers it uncovers still match
+    text = _LEADING.sub("", text.strip())
+    return re.sub(r"\s{2,}", " ", text).strip()
 
 
 def _generate(prompt: str, model: str, timeout: float = 15.0, *,
@@ -37,7 +56,9 @@ def _generate(prompt: str, model: str, timeout: float = 15.0, *,
         # answer and hallucinating a whole extra fictional transcript afterward
         max_tokens = max(64, int(len(prompt.split()) * 2.5))
         # num_ctx: default 131k KV cache spills the model to CPU (27% at 8.7GB); 4k fits fully on GPU
-        options = {"temperature": 0.1, "num_ctx": 4096, "num_predict": max_tokens,
+        # temperature 0: greedy decoding — cleanup must be deterministic, never
+        # restyle the user's own words (sampling variance reads as "rewriting")
+        options = {"temperature": 0.0, "num_ctx": 4096, "num_predict": max_tokens,
                    "stop": ["\n\n"]}
     body = {
         "model": model,
@@ -71,8 +92,10 @@ def transform(instruction: str, text: str) -> tuple[str | None, str]:
     if not text.strip() or not instruction.strip():
         return None, "degraded"
     prompt = f"INSTRUCTION: {instruction}\n\nTEXT:\n{text}"
-    # transforms can legitimately expand (translation, lists) — bigger cap, no stop
-    options = {"temperature": 0.2, "num_ctx": 4096,
+    # transforms can legitimately expand (translation, lists) — bigger cap, no stop.
+    # temperature 0.1: near-deterministic so the same text translates the same
+    # way every time, with just enough variation to keep language nuance natural
+    options = {"temperature": 0.1, "num_ctx": 4096,
                "num_predict": max(256, len(text.split()) * 3)}
     try:
         out = _generate(prompt, ASSIST_MODEL, timeout=60.0,
@@ -107,6 +130,7 @@ def clean(text: str) -> tuple[str, str]:
     'degraded' LLM unavailable/unusable so raw text is returned."""
     if len(text.split()) < WORD_SKIP_THRESHOLD:
         return text, "skipped"
+    text = _strip_fillers(text)  # deterministic — the LLM only punctuates
     try:
         cleaned = _generate(text, MODEL)
     except requests.HTTPError:

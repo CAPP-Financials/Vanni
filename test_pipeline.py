@@ -55,9 +55,19 @@ def test_formatter_cleans():
     low = f" {out.lower()} "
     assert "tuesday" in low, "lost content"
     assert " um " not in low and " uh " not in low, "fillers not removed"
-    # phi3.5 benchmarked ~300ms warm (vs qwen3.5:4b's ~1.7s); 1.0s leaves headroom
-    # for GPU contention with the whisper model resident
+    assert "moved to tuesday" in low, "reworded the user's phrasing"
+    # 1.0s leaves headroom for GPU contention with the whisper model resident
     assert latency < 1.0, f"warm latency {latency:.2f}s >= 1.0s"
+    # word fidelity: casual speech must keep the user's own words — no synonym
+    # swaps ("talk about the stuff" -> "discuss the things"), no contractions
+    casual = "hey can you tell me when you are free so we can talk about the stuff for next week"
+    out2 = formatter.format_text(casual)
+    print(f"  fidelity: {out2!r}")
+    low2 = out2.lower()
+    assert "talk about the stuff" in low2, f"synonym swap: {out2!r}"
+    assert "you are" in low2, f"contraction changed the user's words: {out2!r}"
+    # determinism: same input -> same output (temp 0)
+    assert formatter.format_text(casual) == out2, "cleanup output not deterministic"
 
 
 def test_formatter_ollama_down():
