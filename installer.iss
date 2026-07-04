@@ -3,7 +3,7 @@
 ; Output: Output\VanniSetup.exe
 
 #define AppName "Vanni"
-#define AppVersion "1.2.0"
+#define AppVersion "1.3.0"
 #define AppExe "Vanni.exe"
 
 [Setup]

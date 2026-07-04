@@ -75,7 +75,23 @@ that is offline.
 |---|---|
 | hold `Ctrl+Win` | dictate → clean (if ≥10 words) → paste |
 | hold `Ctrl+Alt+Win` | dictate → paste raw (never calls the LLM) |
+| hold `Ctrl+Alt+Space` | **assist mode**: transform selected text by voice (below) |
 | tray icon menu | toggle LLM cleanup · quit |
+
+### Assist mode (voice edit)
+
+Select text in any app, hold `Ctrl+Alt+Space`, **speak an instruction** —
+"translate to English", "make this a bullet list", "make it more formal" —
+and release. Vanni copies the selection, applies your instruction with the
+local LLM, and pastes the result over the selection. Notes:
+
+- On any failure nothing is pasted — your selection stays untouched in the app.
+- The original selection is always saved to `history/` (on success the clipboard
+  holds the result, so history keeps the only copy of the original).
+- Selections over ~1500 words are refused rather than silently truncated.
+- While the LLM works (up to ~60s worst case) dictation hotkeys wait their turn.
+- The transform model is `assist_model` in config.toml (default `qwen2.5:3b` —
+  benchmarked more reliable than phi3.5 for translation, incl. CJK).
 
 While recording, a small black pill with white waveform bars appears bottom-center
 above the taskbar; the bars dance with your voice, settle to dots while Vanni

@@ -55,3 +55,14 @@ one commit per goal. Theme: dictate faster than you type.
 - **Smart formatting** (C2-G2): `smartfmt.py` deterministic spoken→written pass (final authority after the LLM): "john at gmail dot com" → john@gmail.com, spoken URLs, "new line"/"new paragraph" → real breaks.
 - **Voice snippets** (C2-G3): whole-utterance triggers in `snippets.json` ("insert signature") paste stored text verbatim — skips LLM and smartfmt entirely; hot-reloads on edit; installer ships a starter file without clobbering user edits.
 - **Release** (C2-G4): installer AppVersion 1.1.0 -> 1.2.0. Test suite 12 -> 15 tests, all green.
+
+### v1.3.0 — 2026-07-04 · Assist mode (goal-oriented, test-gated loop, cycle 3)
+One feature, deep: voice-driven text transformation. Same loop discipline. Scope was
+devil's-advocate-reviewed pre-build: hotkey changed ctrl+shift+tab -> ctrl+alt+space
+(browser prev-tab collision), benchmark moved BEFORE pipeline wiring, data-loss guards
+added (history backup of the original, 1500-word selection ceiling).
+- **formatter.transform** (C3-G1): `_generate` generalized (system/options params); `transform(instruction, text)` applies a spoken instruction to selected text, primary->fallback->degraded ladder, never returns pasteable garbage.
+- **Transform benchmark** (C3-G2): `benchmark_formatter.py --transform`, 7 cases (fr/ja/zh/ko->en, en->zh, 2 edits) phi3.5 vs qwen2.5:3b. Verdict: qwen2.5:3b — phi3.5 mistranslated ja 火曜日 (Tuesday) as "Wednesday"; qwen correct on all at equal warm latency (~0.2–0.3s). New config key `assist_model = "qwen2.5:3b"`.
+- **injector.grab_selection** (C3-G3): sentinel-clear -> synthetic ctrl+c -> clipboard read; empty = no selection, stale clipboard can't false-positive.
+- **Assist pipeline + hotkey** (C3-G4): `Pipeline.process_assist` (grab -> instruction ASR + corrections -> transform -> paste over selection); statuses no_selection / assist_failed / selection_too_long; original selection always recorded to history. `handle()` generalized per-pipeline; per-press release dispatch fixed the unbound-r2 quirk (raw-mode releases used to route through the formatted closure). Hold `ctrl+alt+space`, speak the instruction.
+- **Release** (C3-G5): installer AppVersion 1.2.0 -> 1.3.0. Test suite 15 -> 18 tests, all green.
