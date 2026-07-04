@@ -30,10 +30,11 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; Flags: unchecked
 [Files]
 ; exclude user-editable/runtime files that may sit in dist\Vanni from a portable run
 Source: "dist\Vanni\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion; \
-    Excludes: "config.toml,corrections.json,.setup_done,history\*"
+    Excludes: "config.toml,corrections.json,snippets.json,.setup_done,history\*"
 ; user-editable config lives next to the exe (see paths.py BASE); don't clobber edits on upgrade
 Source: "config.toml"; DestDir: "{app}"; Flags: onlyifdoesntexist
 Source: "corrections.json"; DestDir: "{app}"; Flags: onlyifdoesntexist
+Source: "snippets.json"; DestDir: "{app}"; Flags: onlyifdoesntexist
 Source: "INSTALL_NOTES.md"; DestDir: "{app}"
 
 [Icons]

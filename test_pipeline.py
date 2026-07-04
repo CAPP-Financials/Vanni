@@ -132,6 +132,35 @@ def test_smartfmt():
     print(f"  smartfmt: {len(cases)} cases OK")
 
 
+def test_snippets():
+    import asr
+    import history
+    import injector
+    import snippets
+    import vanni
+    # committed example trigger expands; ordinary text does not
+    assert snippets.match("Insert signature.") is not None, "example trigger did not match"
+    assert snippets.match("the quick brown fox") is None, "false-positive snippet match"
+    # pipeline: a trigger utterance pastes the stored expansion VERBATIM (no LLM)
+    p = vanni.Pipeline.__new__(vanni.Pipeline)
+    p.model = None
+    audio = np.zeros(vanni.SAMPLE_RATE, dtype="float32")
+    injected = {}
+    orig = (asr.transcribe, injector.inject, injector.is_foreground_elevated, history.record)
+    try:
+        history.record = lambda *a, **k: None
+        injector.is_foreground_elevated = lambda: False
+        asr.transcribe = lambda m, a: ("insert signature", 0.0)
+        injector.inject = lambda t: injected.update(text=t) or True
+        r = p.process(audio)
+    finally:
+        asr.transcribe, injector.inject, injector.is_foreground_elevated, history.record = orig
+    expansion = snippets.match("insert signature")
+    print(f"  snippet expanded to {injected['text']!r}")
+    assert r["status"] == "ok" and injected["text"] == expansion
+    assert r["format_s"] == 0.0, "snippet should never hit the LLM"
+
+
 def test_failure_status():
     import asr
     import formatter
@@ -248,8 +277,8 @@ def test_injection():
 
 ALL = [test_asr, test_asr_silence, test_formatter_short_skips, test_formatter_cleans,
        test_formatter_ollama_down, test_corrections, test_history, test_hotwords,
-       test_smartfmt, test_failure_status, test_elevated_detect, test_overlay_error,
-       test_mic_device, test_injection]
+       test_smartfmt, test_snippets, test_failure_status, test_elevated_detect,
+       test_overlay_error, test_mic_device, test_injection]
 
 if __name__ == "__main__":
     wanted = sys.argv[1:] or [f.__name__ for f in ALL]

@@ -20,6 +20,7 @@ import formatter
 import history
 import injector
 import smartfmt
+import snippets
 from paths import BASE
 
 CONFIG = tomllib.loads((BASE / "config.toml").read_text(encoding="utf-8"))
@@ -87,12 +88,16 @@ class Pipeline:
         formatted = False
         fmt_status = "skipped"
         if text:
-            if use_formatter and CONFIG["formatter"]["enabled"]:
+            expansion = snippets.match(text)
+            if expansion is not None:
+                text = expansion  # verbatim: no LLM, no smartfmt
+            elif use_formatter and CONFIG["formatter"]["enabled"]:
                 t1 = time.perf_counter()
                 text, fmt_status = formatter.clean(text)
                 result["format_s"] = time.perf_counter() - t1
                 formatted = True
-            text = smartfmt.apply(text)  # deterministic spoken→written, final authority
+            if expansion is None:
+                text = smartfmt.apply(text)  # deterministic spoken→written, final authority
             result["injected"] = injector.inject(text)
             if not result["injected"]:
                 result["status"] = "paste_failed"
