@@ -35,3 +35,15 @@ PHASE 11 PASSED (formatter half; overlay half folded into the consolidated overl
 OVERLAY (final state) — v10.1: 118x28 black capsule (#1c1c1c, alpha 0.92), 15 white (#f5f2e8) rounded vertical bars, width 3px, with soft vibrating tips (dim thin halo line #8b8a82 extending 2.5px past both ends — two-layer fake since Tk has no gradients). While dictating with speech present, each bar's height chases the live mic level with per-bar phase jitter (dances like a real waveform, not a synchronized pulse); during silence and the whole processing step, bars ease to zero height — a zero-height round-capped line IS a white dot, so the 'settle to dots' state falls out of the same drawing code. Hides once text is injected. Tk owns the main thread (Windows requirement), 30fps, public API recording()/set_level()/processing()/done(). Arrived at after 10 visual iterations (v1–v10 across Phases 7/9/10/12/13/14); the iteration-by-iteration cosmetic history was pruned from this log 2026-07-03.
 
 RENAME 2026-07-04 — app renamed Flow -> Vanni (वाणी, "speech") ahead of open-sourcing. flow.py -> vanni.py, Flow.spec -> Vanni.spec, Flow-launcher.ps1 -> Vanni-launcher.ps1, exe/installer now Vanni.exe / VanniSetup.exe; older entries above keep the original name.
+
+## CHANGELOG
+
+### v1.1.0 — 2026-07-04 · Reliability increment (goal-oriented, test-gated loop)
+Built as six dependency-ordered goals, each gated on a test flipping red→green plus a
+full-suite regression pass, one commit per goal. Theme: stop failing silently, help adoption.
+- **Mic device selection** (G1): `[audio] device` config + tray "Microphone" submenu enumerating inputs and persisting the choice. Wrong default mic was the #1 "recorded nothing" cause.
+- **Overlay error() state** (G2): red-pulse flash that auto-hides, reusing the existing render loop.
+- **Visible failure feedback** (G3): `Pipeline.process` now returns an explicit `status` (ok / no_speech / paste_failed / paste_blocked / ollama_offline_raw); the tray red-flashes + notifies instead of silently doing nothing. `formatter.clean()` returns `(text, status)`; `format_text` kept as a wrapper.
+- **Elevated-window paste detection** (G4): `injector.is_foreground_elevated()`/`self_elevated()` (win32 token) surface `paste_blocked` — an elevated window silently drops synthetic Ctrl+V, so Vanni now tells the user to press Ctrl+V.
+- **Security docs + -Elevated launcher** (G5): `Vanni-launcher.ps1 -Elevated` (RunAs); Defender/antivirus allow-listing guidance in INSTALL_NOTES + README (a global-hotkey + synthetic-keystroke + clipboard app reads as keylogger-shaped).
+- **Release** (G6): installer AppVersion 1.0.0 -> 1.1.0. Test suite 8 -> 12 tests, all green.
