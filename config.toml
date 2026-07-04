@@ -26,6 +26,10 @@ ollama_url = "http://127.0.0.1:11434"
 
 [audio]
 min_seconds = 0.3               # discard shorter recordings (hallucination gate)
+# Input device: "" = system default. Pick one from the tray "Microphone" menu
+# (which persists your choice here), or set an index/name manually. A wrong
+# default mic is the #1 "it recorded nothing" cause — this lets you choose.
+device = ""
 
 [history]
 # Local dictation log: history/YYYY-MM-DD.md next to the exe — raw transcript,

@@ -97,6 +97,31 @@ def test_history():
     assert "olama → Ollama" in text, "applied correction not recorded"
 
 
+def test_mic_device():
+    import types
+
+    import sounddevice as sd
+
+    import vanni
+    # config exposes an [audio] device key (empty = system default)
+    assert "device" in vanni.CONFIG["audio"], "config missing [audio] device"
+    # Recorder forwards a chosen device to sd.InputStream
+    captured = {}
+
+    class FakeStream:
+        def start(self): pass
+        def stop(self): pass
+        def close(self): pass
+
+    rec = vanni.Recorder(device=7)
+    rec.sd = types.SimpleNamespace(InputStream=lambda **kw: captured.update(kw) or FakeStream())
+    rec.start()
+    inputs = [d for d in sd.query_devices() if d["max_input_channels"] > 0]
+    print(f"  input devices: {len(inputs)}; device kwarg forwarded = {captured.get('device')}")
+    assert captured.get("device") == 7, f"device not forwarded to InputStream: {captured}"
+    assert inputs, "no input devices enumerated"
+
+
 def test_injection():
     import injector
     sentinel = f"vanni-sentinel-{int(time.time())}"
@@ -108,7 +133,8 @@ def test_injection():
 
 
 ALL = [test_asr, test_asr_silence, test_formatter_short_skips, test_formatter_cleans,
-       test_formatter_ollama_down, test_corrections, test_history, test_injection]
+       test_formatter_ollama_down, test_corrections, test_history, test_mic_device,
+       test_injection]
 
 if __name__ == "__main__":
     wanted = sys.argv[1:] or [f.__name__ for f in ALL]

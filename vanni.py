@@ -97,15 +97,31 @@ class Pipeline:
         return result
 
 
+def _resolve_device(v):
+    """config [audio] device -> sounddevice arg: "" -> None (system default)."""
+    return None if v in (None, "") else v
+
+
+def _persist_device(value) -> None:
+    """Rewrite the `device = ...` line in config.toml so a tray choice sticks.
+    config.toml is our own controlled file with exactly one such line."""
+    import re
+    p = BASE / "config.toml"
+    literal = f"device = {value}" if isinstance(value, int) else f'device = "{value}"'
+    text = re.sub(r"(?m)^device = .*$", literal, p.read_text(encoding="utf-8"))
+    p.write_text(text, encoding="utf-8")
+
+
 class Recorder:
     """Captures mic audio between hotkey press and release."""
 
-    def __init__(self, on_level=None):
+    def __init__(self, on_level=None, device=None):
         import sounddevice as sd
         self.sd = sd
         self.chunks: list[np.ndarray] = []
         self.stream = None
         self.on_level = on_level  # fed mic RMS for the recording overlay
+        self.device = device  # None = system default input; int index or name otherwise
 
     def start(self):
         self.chunks = []
@@ -118,6 +134,7 @@ class Recorder:
 
         self.stream = self.sd.InputStream(
             samplerate=SAMPLE_RATE, channels=1, dtype="float32", callback=cb,
+            device=self.device,
         )
         self.stream.start()
 
@@ -150,7 +167,8 @@ def run_tray(pipeline: Pipeline):
 
     from overlay import Overlay
     indicator = Overlay()  # UI runs on the main thread at the end of this function
-    recorder = Recorder(on_level=indicator.set_level)
+    recorder = Recorder(on_level=indicator.set_level,
+                        device=_resolve_device(CONFIG["audio"].get("device")))
     busy = threading.Lock()
 
     def handle(use_formatter: bool):
@@ -196,9 +214,28 @@ def run_tray(pipeline: Pipeline):
         # end the Tk mainloop on its own thread
         indicator.root.after(0, indicator.root.destroy)
 
+    def make_device_item(idx, name):
+        def on_click(icon_, item_):
+            recorder.device = idx
+            _persist_device(idx)
+        return pystray.MenuItem(name, on_click, radio=True,
+                                checked=lambda item, idx=idx: recorder.device == idx)
+
+    def default_item():
+        def on_click(icon_, item_):
+            recorder.device = None
+            _persist_device("")
+        return pystray.MenuItem("System default", on_click, radio=True,
+                                checked=lambda item: recorder.device is None)
+
+    inputs = [(i, d["name"]) for i, d in enumerate(recorder.sd.query_devices())
+              if d["max_input_channels"] > 0]
+    mic_menu = pystray.Menu(default_item(), *(make_device_item(i, n) for i, n in inputs))
+
     icon.menu = pystray.Menu(
         pystray.MenuItem(lambda i: f"LLM cleanup: {'on' if state['cleanup'] else 'off'}",
                          toggle_cleanup),
+        pystray.MenuItem("Microphone", mic_menu),
         pystray.MenuItem("Quit", quit_app),
     )
     print(f"Vanni running. Hold {CONFIG['hotkeys']['dictate']} to dictate "
