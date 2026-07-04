@@ -151,9 +151,19 @@ For best accuracy in a specific language, swap `asr.model` per faster-whisper's 
 ## Known limits
 
 - Pasting into **elevated (admin) windows** silently fails unless Vanni itself runs
-  elevated. The text is still in your clipboard — paste manually.
+  elevated — the synthetic Ctrl+V is dropped, though the text still lands in your
+  clipboard (Vanni now detects this and tells you to press Ctrl+V). To dictate directly
+  into admin windows, start elevated: `Vanni-launcher.ps1 -Elevated` (one UAC prompt).
 - Some games/anti-cheat software block synthetic Ctrl+V.
 - The `keyboard` library needs no admin rights for normal apps.
+
+### Antivirus / Defender note
+
+A global hotkey + synthetic keystrokes + clipboard writes is structurally the same
+shape as a keylogger, so Defender or corporate endpoint tools may flag or block Vanni.
+This is expected for any tool that types for you; Vanni is fully local and open-source —
+read the code, then allow-list the install folder (Windows Security → Virus & threat
+protection → Exclusions), or ask IT to allow-list it on managed machines.
 
 ## Architecture
 

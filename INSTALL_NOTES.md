@@ -33,11 +33,26 @@ Vanni degrades automatically — no configuration needed:
   * Voice-activity detection trims silence to keep CPU use low.
 Everything stays local and free at every tier.
 
-Known limits
-------------
-  * Pasting into elevated (admin) windows silently fails unless Vanni
-    itself runs elevated; the text is still in your clipboard.
-  * Some games/anti-cheat software block synthetic Ctrl+V.
+Antivirus / Windows Defender
+----------------------------
+Vanni uses a global hotkey, types text via synthetic keystrokes, and writes
+to the clipboard. That combination looks structurally like a keylogger to
+security software, so Defender or corporate endpoint tools may flag or block
+it. This is expected for any dictation tool that types for you — Vanni is
+fully local and open-source (read the code). If it is blocked:
+  * Windows Security -> Virus & threat protection -> Manage settings ->
+    Add or remove exclusions -> add the Vanni install folder.
+  * On managed/work laptops, ask IT to allow-list it.
+
+Admin (elevated) windows
+------------------------
+Pasting into an elevated window (e.g. an admin terminal) silently fails
+unless Vanni itself runs elevated — the text still lands in your clipboard,
+and Vanni now warns you to press Ctrl+V. To dictate directly into admin
+windows, start Vanni elevated:
+    powershell -ExecutionPolicy Bypass -File Vanni-launcher.ps1 -Elevated
+(A UAC prompt appears once.) Some games/anti-cheat software also block
+synthetic Ctrl+V.
 
 Startup option
 --------------

@@ -1,9 +1,11 @@
 # Vanni launcher / lifecycle manager.
-#   .\Vanni-launcher.ps1          -> start Ollama (if down) + Vanni.exe, both hidden
-#   .\Vanni-launcher.ps1 -Stop    -> cleanly terminate Vanni (and Ollama if we started it)
+#   .\Vanni-launcher.ps1            -> start Ollama (if down) + Vanni.exe, both hidden
+#   .\Vanni-launcher.ps1 -Elevated  -> start Vanni as admin (so it can paste into
+#                                       elevated windows); triggers a UAC prompt
+#   .\Vanni-launcher.ps1 -Stop      -> cleanly terminate Vanni (and Ollama if we started it)
 # Double-click helpers: make shortcuts running
-#   powershell -ExecutionPolicy Bypass -File Vanni-launcher.ps1 [-Stop]
-param([switch]$Stop)
+#   powershell -ExecutionPolicy Bypass -File Vanni-launcher.ps1 [-Stop] [-Elevated]
+param([switch]$Stop, [switch]$Elevated)
 
 $ErrorActionPreference = "SilentlyContinue"
 $vanniExe  = Join-Path $PSScriptRoot "dist\Vanni\Vanni.exe"
@@ -35,5 +37,12 @@ if (-not (Test-Ollama)) {
 }
 @{ startedOllama = $startedOllama } | ConvertTo-Json | Set-Content $stateFile
 
-Start-Process $vanniExe -WindowStyle Hidden -WorkingDirectory (Split-Path $vanniExe)
-Write-Host "Vanni started (hidden). Hold Ctrl+Win to dictate. Stop with: .\Vanni-launcher.ps1 -Stop"
+if ($Elevated) {
+    # RunAs triggers a UAC prompt; an elevated Vanni can paste into admin windows.
+    # Can't combine with -WindowStyle Hidden (UAC needs interaction).
+    Start-Process $vanniExe -Verb RunAs -WorkingDirectory (Split-Path $vanniExe)
+    Write-Host "Vanni started elevated (admin). Hold Ctrl+Win to dictate. Stop with: .\Vanni-launcher.ps1 -Stop"
+} else {
+    Start-Process $vanniExe -WindowStyle Hidden -WorkingDirectory (Split-Path $vanniExe)
+    Write-Host "Vanni started (hidden). Hold Ctrl+Win to dictate. Stop with: .\Vanni-launcher.ps1 -Stop"
+}
