@@ -94,6 +94,10 @@ class Pipeline:
             result["injected"] = injector.inject(text)
             if not result["injected"]:
                 result["status"] = "paste_failed"
+            elif injector.is_foreground_elevated() and not injector.self_elevated():
+                # inject() returned True (clipboard stuck) but an elevated window
+                # silently drops the synthetic Ctrl+V — warn instead of failing silently
+                result["status"] = "paste_blocked"
             elif fmt_status == "degraded":
                 result["status"] = "ollama_offline_raw"
             else:
@@ -199,13 +203,14 @@ def run_tray(pipeline: Pipeline):
                     r = pipeline.process(audio, use_formatter and state["cleanup"])
                     # visible feedback so failures aren't silent: red flash for
                     # hard failures, a tray notification for anything non-ok
-                    if r["status"] in ("no_speech", "paste_failed"):
+                    if r["status"] in ("no_speech", "paste_failed", "paste_blocked"):
                         indicator.error()
                     else:
                         indicator.done()
                     msg = {
                         "no_speech": "No speech detected",
                         "paste_failed": "Paste failed — text is in your clipboard",
+                        "paste_blocked": "Admin window — press Ctrl+V (text is in your clipboard)",
                         "ollama_offline_raw": "Cleanup unavailable — pasted raw",
                     }.get(r["status"])
                     if msg:

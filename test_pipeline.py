@@ -106,9 +106,11 @@ def test_failure_status():
     p = vanni.Pipeline.__new__(vanni.Pipeline)  # skip model load
     p.model = None
     audio = np.zeros(vanni.SAMPLE_RATE, dtype="float32")  # 1s, passes min-duration gate
-    orig = (asr.transcribe, formatter.clean, injector.inject, history.record)
+    orig = (asr.transcribe, formatter.clean, injector.inject,
+            injector.is_foreground_elevated, history.record)
     try:
         history.record = lambda *a, **k: None
+        injector.is_foreground_elevated = lambda: False  # hermetic: ignore real fg window
         # 1) nothing recognized -> no_speech
         asr.transcribe = lambda m, a: ("", 0.0)
         assert p.process(audio)["status"] == "no_speech"
@@ -122,8 +124,45 @@ def test_failure_status():
         formatter.clean = lambda t: (t, "degraded")
         assert p.process(audio)["status"] == "ollama_offline_raw"
     finally:
-        asr.transcribe, formatter.clean, injector.inject, history.record = orig
+        (asr.transcribe, formatter.clean, injector.inject,
+         injector.is_foreground_elevated, history.record) = orig
     print("  statuses ok: no_speech / paste_failed / ollama_offline_raw")
+
+
+def test_elevated_detect():
+    import asr
+    import formatter
+    import history
+    import injector
+    import vanni
+    # is_foreground_elevated() composes _foreground_pid + _process_elevated, guarded
+    o_pid, o_elev = injector._foreground_pid, injector._process_elevated
+    try:
+        injector._foreground_pid = lambda: 4321
+        injector._process_elevated = lambda pid=None: True
+        assert injector.is_foreground_elevated() is True
+        injector._process_elevated = lambda pid=None: False
+        assert injector.is_foreground_elevated() is False
+    finally:
+        injector._foreground_pid, injector._process_elevated = o_pid, o_elev
+    # process surfaces paste_blocked when the target is elevated but Vanni is not
+    p = vanni.Pipeline.__new__(vanni.Pipeline)
+    p.model = None
+    audio = np.zeros(vanni.SAMPLE_RATE, dtype="float32")
+    orig = (asr.transcribe, formatter.clean, injector.inject,
+            injector.is_foreground_elevated, injector.self_elevated, history.record)
+    try:
+        history.record = lambda *a, **k: None
+        asr.transcribe = lambda m, a: ("please clean this whole sentence up for me now thanks", 0.0)
+        formatter.clean = lambda t: (t, "ok")
+        injector.inject = lambda t: True
+        injector.is_foreground_elevated = lambda: True
+        injector.self_elevated = lambda: False
+        assert p.process(audio)["status"] == "paste_blocked"
+    finally:
+        (asr.transcribe, formatter.clean, injector.inject,
+         injector.is_foreground_elevated, injector.self_elevated, history.record) = orig
+    print("  elevated detect + paste_blocked status OK")
 
 
 def test_overlay_error():
@@ -174,7 +213,7 @@ def test_injection():
 
 ALL = [test_asr, test_asr_silence, test_formatter_short_skips, test_formatter_cleans,
        test_formatter_ollama_down, test_corrections, test_history, test_failure_status,
-       test_overlay_error, test_mic_device, test_injection]
+       test_elevated_detect, test_overlay_error, test_mic_device, test_injection]
 
 if __name__ == "__main__":
     wanted = sys.argv[1:] or [f.__name__ for f in ALL]

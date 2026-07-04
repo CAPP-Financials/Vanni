@@ -6,6 +6,51 @@ import keyboard
 import pyperclip
 
 
+def _process_elevated(pid=None) -> bool:
+    """True if the process (current if pid is None) runs with an elevated token."""
+    import win32api
+    import win32con
+    import win32security
+    if pid is None:
+        handle = win32api.GetCurrentProcess()
+    else:
+        # QUERY_LIMITED_INFORMATION works across integrity levels
+        handle = win32api.OpenProcess(0x1000, False, pid)
+    try:
+        token = win32security.OpenProcessToken(handle, win32con.TOKEN_QUERY)
+        return bool(win32security.GetTokenInformation(token, win32security.TokenElevation))
+    finally:
+        if pid is not None:
+            win32api.CloseHandle(handle)
+
+
+def _foreground_pid() -> int:
+    import win32gui
+    import win32process
+    hwnd = win32gui.GetForegroundWindow()
+    _, pid = win32process.GetWindowThreadProcessId(hwnd)
+    return pid
+
+
+def self_elevated() -> bool:
+    """True if Vanni itself runs elevated. Best-effort (False if undeterminable)."""
+    try:
+        return _process_elevated(None)
+    except Exception:
+        return False
+
+
+def is_foreground_elevated() -> bool:
+    """True if the focused window's process runs elevated. A synthetic Ctrl+V is
+    silently ignored by an elevated window when Vanni itself is not elevated, so
+    this drives a proactive 'text is in your clipboard' warning. Best-effort:
+    returns False if elevation can't be determined."""
+    try:
+        return _process_elevated(_foreground_pid())
+    except Exception:
+        return False
+
+
 def inject(text: str) -> bool:
     """Put text in clipboard and paste into the focused app. Returns False if the
     clipboard write didn't stick (paste itself can't be verified in arbitrary apps;
