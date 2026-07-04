@@ -47,3 +47,11 @@ full-suite regression pass, one commit per goal. Theme: stop failing silently, h
 - **Elevated-window paste detection** (G4): `injector.is_foreground_elevated()`/`self_elevated()` (win32 token) surface `paste_blocked` — an elevated window silently drops synthetic Ctrl+V, so Vanni now tells the user to press Ctrl+V.
 - **Security docs + -Elevated launcher** (G5): `Vanni-launcher.ps1 -Elevated` (RunAs); Defender/antivirus allow-listing guidance in INSTALL_NOTES + README (a global-hotkey + synthetic-keystroke + clipboard app reads as keylogger-shaped).
 - **Release** (G6): installer AppVersion 1.0.0 -> 1.1.0. Test suite 8 -> 12 tests, all green.
+
+### v1.2.0 — 2026-07-04 · Power features (goal-oriented, test-gated loop, cycle 2)
+Three power features, same loop discipline: gate test red→green, full-suite regression,
+one commit per goal. Theme: dictate faster than you type.
+- **Recognition biasing** (C2-G1): hotwords fed to faster-whisper's `initial_prompt` — built from corrections.json targets plus a `[asr] vocabulary` config list, so names/jargon transcribe right the first time.
+- **Smart formatting** (C2-G2): `smartfmt.py` deterministic spoken→written pass (final authority after the LLM): "john at gmail dot com" → john@gmail.com, spoken URLs, "new line"/"new paragraph" → real breaks.
+- **Voice snippets** (C2-G3): whole-utterance triggers in `snippets.json` ("insert signature") paste stored text verbatim — skips LLM and smartfmt entirely; hot-reloads on edit; installer ships a starter file without clobbering user edits.
+- **Release** (C2-G4): installer AppVersion 1.1.0 -> 1.2.0. Test suite 12 -> 15 tests, all green.
