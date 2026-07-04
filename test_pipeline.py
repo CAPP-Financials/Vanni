@@ -73,6 +73,26 @@ def test_formatter_ollama_down():
     assert out == raw, "should pass through raw text when Ollama is down"
 
 
+def test_transform():
+    import formatter
+    # live Ollama: apply a spoken instruction to a text selection
+    out, status = formatter.transform("translate to English",
+                                      "bonjour le monde tout va bien")
+    print(f"  transform: {out!r} status={status}")
+    assert status == "ok" and out and "hello" in out.lower()
+    # Ollama down -> degraded, no text returned (caller must NOT paste)
+    old = formatter.OLLAMA_URL
+    formatter.OLLAMA_URL = "http://localhost:1"
+    try:
+        out, status = formatter.transform("summarize", "some selected text here")
+    finally:
+        formatter.OLLAMA_URL = old
+    assert (out, status) == (None, "degraded")
+    # empty selection -> degraded without any HTTP call
+    out, status = formatter.transform("summarize", "")
+    assert (out, status) == (None, "degraded")
+
+
 def test_corrections():
     import corrections
     t0 = time.perf_counter()
@@ -276,7 +296,7 @@ def test_injection():
 
 
 ALL = [test_asr, test_asr_silence, test_formatter_short_skips, test_formatter_cleans,
-       test_formatter_ollama_down, test_corrections, test_history, test_hotwords,
+       test_formatter_ollama_down, test_transform, test_corrections, test_history, test_hotwords,
        test_smartfmt, test_snippets, test_failure_status, test_elevated_detect,
        test_overlay_error, test_mic_device, test_injection]
 

@@ -29,26 +29,67 @@ SYSTEM_PROMPT = (
 )
 
 
-def _generate(prompt: str, model: str, timeout: float = 15.0) -> str:
-    # output should never be much longer than the input; capping num_predict
-    # (plus a stop sequence) prevents phi3.5 occasionally running on past the
-    # answer and hallucinating a whole extra fictional transcript afterward
-    max_tokens = max(64, int(len(prompt.split()) * 2.5))
+def _generate(prompt: str, model: str, timeout: float = 15.0, *,
+              system: str = SYSTEM_PROMPT, options: dict | None = None) -> str:
+    if options is None:
+        # output should never be much longer than the input; capping num_predict
+        # (plus a stop sequence) prevents phi3.5 occasionally running on past the
+        # answer and hallucinating a whole extra fictional transcript afterward
+        max_tokens = max(64, int(len(prompt.split()) * 2.5))
+        # num_ctx: default 131k KV cache spills the model to CPU (27% at 8.7GB); 4k fits fully on GPU
+        options = {"temperature": 0.1, "num_ctx": 4096, "num_predict": max_tokens,
+                   "stop": ["\n\n"]}
     body = {
         "model": model,
-        "system": SYSTEM_PROMPT,
+        "system": system,
         "prompt": prompt,
         "stream": False,
         "keep_alive": CONFIG.get("keep_alive", -1),  # -1 = resident in VRAM
-        # num_ctx: default 131k KV cache spills the model to CPU (27% at 8.7GB); 4k fits fully on GPU
-        "options": {"temperature": 0.1, "num_ctx": 4096, "num_predict": max_tokens,
-                   "stop": ["\n\n"]},
+        "options": options,
     }
     if any(model.startswith(m) for m in _THINKING_MODELS):
         body["think"] = False  # suppress reasoning tokens; halves qwen3.5's per-call overhead
     r = requests.post(f"{OLLAMA_URL}/api/generate", json=body, timeout=timeout)
     r.raise_for_status()
     return r.json()["response"].strip()
+
+
+ASSIST_MODEL = CONFIG.get("assist_model", MODEL)  # benchmark-informed override for transforms
+
+TRANSFORM_PROMPT = (
+    "You edit text according to a spoken instruction. You are given an "
+    "INSTRUCTION and a TEXT. Apply the instruction to the text. Output ONLY "
+    "the resulting text — no preamble, no explanation, no quotes around the "
+    "result, no commentary. If the instruction is unclear, make the most "
+    "reasonable interpretation and still output only the transformed text."
+)
+
+
+def transform(instruction: str, text: str) -> tuple[str | None, str]:
+    """Apply a spoken instruction to selected text; return (result, status).
+    status: 'ok' · 'degraded' (LLM unavailable/unusable — caller must NOT paste)."""
+    if not text.strip() or not instruction.strip():
+        return None, "degraded"
+    prompt = f"INSTRUCTION: {instruction}\n\nTEXT:\n{text}"
+    # transforms can legitimately expand (translation, lists) — bigger cap, no stop
+    options = {"temperature": 0.2, "num_ctx": 4096,
+               "num_predict": max(256, len(text.split()) * 3)}
+    try:
+        out = _generate(prompt, ASSIST_MODEL, timeout=60.0,
+                        system=TRANSFORM_PROMPT, options=options)
+    except requests.HTTPError:
+        if not FALLBACK_MODEL:
+            return None, "degraded"
+        try:
+            out = _generate(prompt, FALLBACK_MODEL, timeout=60.0,
+                            system=TRANSFORM_PROMPT, options=options)
+        except requests.RequestException:
+            return None, "degraded"
+    except requests.RequestException:
+        return None, "degraded"
+    if not out:
+        return None, "degraded"
+    return out, "ok"
 
 
 def warm_up() -> bool:
