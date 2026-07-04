@@ -3,6 +3,10 @@
 [hotkeys]
 dictate = "ctrl+windows"        # hold to record, release to transcribe+format+inject
 dictate_raw = "ctrl+alt+windows" # hold: same but always skips the LLM formatter
+# Assist mode: select text anywhere, hold, SPEAK an instruction ("translate to
+# English", "make this a bullet list"), release — the transformed text replaces
+# the selection. Change here if the chord clashes with an app you use.
+assist = "ctrl+alt+space"
 
 [asr]
 model = "large-v3-turbo"        # faster-whisper model id; fallbacks tried automatically

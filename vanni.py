@@ -27,6 +27,9 @@ CONFIG = tomllib.loads((BASE / "config.toml").read_text(encoding="utf-8"))
 
 SAMPLE_RATE = 16000
 MIN_SECONDS = CONFIG["audio"]["min_seconds"]
+# assist selections beyond this would silently truncate inside the LLM's num_ctx
+# and paste a partial transform over the full selection — refuse instead
+ASSIST_MAX_WORDS = 1500
 
 
 def ensure_ollama() -> bool:
@@ -116,6 +119,48 @@ class Pipeline:
         return result
 
 
+    def process_assist(self, audio: np.ndarray) -> dict:
+        """Assist mode: the spoken audio is an INSTRUCTION applied to the focused
+        app's selected text; the transformed result is pasted over the selection.
+        Never pastes on any failure — the selection stays untouched in the app."""
+        result = {"text": "", "asr_s": 0.0, "format_s": 0.0, "total_s": 0.0,
+                  "injected": False, "status": "no_speech"}
+        if len(audio) < MIN_SECONDS * SAMPLE_RATE:
+            return result
+        t0 = time.perf_counter()
+        selection = injector.grab_selection()  # first, while the selection is live
+        if not selection.strip():
+            result["status"] = "no_selection"
+            return result
+        if len(selection.split()) > ASSIST_MAX_WORDS:
+            result["status"] = "selection_too_long"
+            return result
+        instruction, result["asr_s"] = asr.transcribe(self.model, audio)
+        instruction, fixes = corrections.apply_verbose(instruction)
+        if not instruction:
+            return result  # no_speech
+        t1 = time.perf_counter()
+        text, fmt_status = formatter.transform(instruction, selection)
+        result["format_s"] = time.perf_counter() - t1
+        if fmt_status != "ok":
+            result["status"] = "assist_failed"
+            return result
+        result["injected"] = injector.inject(text)
+        if not result["injected"]:
+            result["status"] = "paste_failed"
+        elif injector.is_foreground_elevated() and not injector.self_elevated():
+            result["status"] = "paste_blocked"
+        else:
+            result["status"] = "ok"
+        result["text"] = text
+        result["total_s"] = time.perf_counter() - t0
+        # the clipboard now holds the RESULT, so history is the only surviving
+        # copy of the original selection — always record it
+        history.record(f"[{instruction}] {selection}", text, mode="assist",
+                       corrections_applied=fixes, duration_s=result["total_s"])
+        return result
+
+
 def _resolve_device(v):
     """config [audio] device -> sounddevice arg: "" -> None (system default)."""
     return None if v in (None, "") else v
@@ -169,7 +214,7 @@ def run_tray(pipeline: Pipeline):
     import pystray
     from PIL import Image, ImageDraw
 
-    state = {"status": "idle", "cleanup": CONFIG["formatter"]["enabled"]}
+    state = {"status": "idle", "cleanup": CONFIG["formatter"]["enabled"], "release": None}
 
     def make_icon(color):
         img = Image.new("RGB", (64, 64), "white")
@@ -190,10 +235,13 @@ def run_tray(pipeline: Pipeline):
                         device=_resolve_device(CONFIG["audio"].get("device")))
     busy = threading.Lock()
 
-    def handle(use_formatter: bool):
+    def handle(run):
+        """Press/release pair for a hold-to-speak hotkey; `run(audio)` is the
+        pipeline entry the release invokes (dictate, raw dictate, or assist)."""
         def on_press():
             if busy.locked() or state["status"] != "idle":
                 return
+            state["release"] = on_release  # the shared release keys dispatch here
             set_status("recording")
             indicator.recording()
             recorder.start()
@@ -207,10 +255,11 @@ def run_tray(pipeline: Pipeline):
             def work():
                 with busy:
                     audio = recorder.stop()
-                    r = pipeline.process(audio, use_formatter and state["cleanup"])
+                    r = run(audio)
                     # visible feedback so failures aren't silent: red flash for
                     # hard failures, a tray notification for anything non-ok
-                    if r["status"] in ("no_speech", "paste_failed", "paste_blocked"):
+                    if r["status"] in ("no_speech", "paste_failed", "paste_blocked",
+                                       "no_selection", "assist_failed", "selection_too_long"):
                         indicator.error()
                     else:
                         indicator.done()
@@ -219,6 +268,9 @@ def run_tray(pipeline: Pipeline):
                         "paste_failed": "Paste failed — text is in your clipboard",
                         "paste_blocked": "Admin window — press Ctrl+V (text is in your clipboard)",
                         "ollama_offline_raw": "Cleanup unavailable — pasted raw",
+                        "no_selection": "Assist: nothing selected — select text first",
+                        "assist_failed": "Assist failed — your selection is in the clipboard",
+                        "selection_too_long": "Assist: selection too long (max ~1500 words)",
                     }.get(r["status"])
                     if msg:
                         try:
@@ -235,11 +287,20 @@ def run_tray(pipeline: Pipeline):
 
         return on_press, on_release
 
-    p1, r1 = handle(use_formatter=True)
-    p2, r2 = handle(use_formatter=False)
+    p1, _ = handle(lambda a: pipeline.process(a, state["cleanup"]))
+    p2, _ = handle(lambda a: pipeline.process(a, False))
+    p3, _ = handle(pipeline.process_assist)
     keyboard.add_hotkey(CONFIG["hotkeys"]["dictate"], p1, suppress=False, trigger_on_release=False)
-    keyboard.on_release_key("windows", lambda e: r1() if state["status"] == "recording" else None)
     keyboard.add_hotkey(CONFIG["hotkeys"]["dictate_raw"], p2, suppress=False, trigger_on_release=False)
+    keyboard.add_hotkey(CONFIG["hotkeys"]["assist"], p3, suppress=False, trigger_on_release=False)
+    # each press stores its own release in state["release"]; the shared release
+    # keys (windows for dictate chords, space for assist) dispatch to it, so
+    # every mode ends through ITS pipeline — not r1's (old r2-unbound quirk)
+    def release_dispatch(e):
+        if state["status"] == "recording" and state["release"]:
+            state["release"]()
+    keyboard.on_release_key("windows", release_dispatch)
+    keyboard.on_release_key("space", release_dispatch)
 
     def toggle_cleanup(icon_, item_):
         state["cleanup"] = not state["cleanup"]
@@ -274,7 +335,9 @@ def run_tray(pipeline: Pipeline):
         pystray.MenuItem("Quit", quit_app),
     )
     print(f"Vanni running. Hold {CONFIG['hotkeys']['dictate']} to dictate "
-          f"({CONFIG['hotkeys']['dictate_raw']} = raw). Quit via tray icon.")
+          f"({CONFIG['hotkeys']['dictate_raw']} = raw). "
+          f"Hold {CONFIG['hotkeys']['assist']} + speak an instruction to transform "
+          f"selected text. Quit via tray icon.")
     # Tk must own the MAIN thread on Windows or the overlay won't render;
     # pystray is happy detached.
     icon.run_detached()

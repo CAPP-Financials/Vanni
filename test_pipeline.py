@@ -218,6 +218,60 @@ def test_grab_selection():
         injector.pyperclip, injector.keyboard, injector._GRAB_SETTLE_S = orig
 
 
+def test_assist_pipeline():
+    import asr
+    import formatter
+    import history
+    import injector
+    import vanni
+    p = vanni.Pipeline.__new__(vanni.Pipeline)
+    p.model = None
+    audio = np.zeros(vanni.SAMPLE_RATE, dtype="float32")
+    calls = {}
+
+    def boom(*a, **k):
+        raise AssertionError("must not be called on this path")
+
+    orig = (asr.transcribe, injector.grab_selection, formatter.transform,
+            injector.inject, injector.is_foreground_elevated, history.record)
+    try:
+        injector.is_foreground_elevated = lambda: False
+        history.record = lambda raw, final, **k: calls.update(
+            hist_raw=raw, hist_final=final, hist_mode=k.get("mode"))
+        # happy path: instruction + selection -> transform -> verbatim paste
+        asr.transcribe = lambda m, a: ("make it formal", 0.0)
+        injector.grab_selection = lambda: "hey what's up"
+        formatter.transform = lambda i, t: ("Good afternoon.", "ok")
+        injector.inject = lambda t: calls.update(injected=t) or True
+        r = p.process_assist(audio)
+        print(f"  assist ok: injected={calls['injected']!r}")
+        assert r["status"] == "ok" and calls["injected"] == "Good afternoon."
+        # the grabbed original must survive in history (clipboard now holds the result)
+        assert "hey what's up" in calls["hist_raw"] and calls["hist_mode"] == "assist"
+        # nothing selected -> no LLM call
+        injector.grab_selection = lambda: ""
+        formatter.transform = boom
+        assert p.process_assist(audio)["status"] == "no_selection"
+        # transform degraded -> must NOT paste
+        injector.grab_selection = lambda: "some text"
+        formatter.transform = lambda i, t: (None, "degraded")
+        injector.inject = boom
+        assert p.process_assist(audio)["status"] == "assist_failed"
+        # no spoken instruction
+        asr.transcribe = lambda m, a: ("", 0.0)
+        assert p.process_assist(audio)["status"] == "no_speech"
+        # oversized selection would silently truncate in the LLM -> refuse
+        asr.transcribe = lambda m, a: ("summarize", 0.0)
+        injector.grab_selection = lambda: "word " * 2000
+        formatter.transform = boom
+        assert p.process_assist(audio)["status"] == "selection_too_long"
+        print("  statuses ok: no_selection / assist_failed / no_speech / selection_too_long")
+    finally:
+        (asr.transcribe, injector.grab_selection, formatter.transform,
+         injector.inject, injector.is_foreground_elevated, history.record) = orig
+    assert "assist" in vanni.CONFIG["hotkeys"], "config.toml needs [hotkeys] assist"
+
+
 def test_failure_status():
     import asr
     import formatter
@@ -334,7 +388,8 @@ def test_injection():
 
 ALL = [test_asr, test_asr_silence, test_formatter_short_skips, test_formatter_cleans,
        test_formatter_ollama_down, test_transform, test_corrections, test_history, test_hotwords,
-       test_smartfmt, test_snippets, test_grab_selection, test_failure_status, test_elevated_detect,
+       test_smartfmt, test_snippets, test_grab_selection, test_assist_pipeline,
+       test_failure_status, test_elevated_detect,
        test_overlay_error, test_mic_device, test_injection]
 
 if __name__ == "__main__":
