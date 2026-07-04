@@ -113,6 +113,25 @@ def test_hotwords():
     assert "Vanni" in hw, "[asr] vocabulary terms not fed as hotwords"
 
 
+def test_smartfmt():
+    import smartfmt
+    cases = [
+        ("email me at John dot Smith at gmail dot com today",
+         "email me at john.smith@gmail.com today"),
+        ("check example dot com for details",
+         "check example.com for details"),
+        ("first point new line second point",
+         "first point\nsecond point"),
+        ("intro new paragraph the body",
+         "intro\n\nthe body"),
+        ("we met at noon and talked", "we met at noon and talked"),  # no false positives
+    ]
+    for src, want in cases:
+        got = smartfmt.apply(src)
+        assert got == want, f"{src!r} -> {got!r} (wanted {want!r})"
+    print(f"  smartfmt: {len(cases)} cases OK")
+
+
 def test_failure_status():
     import asr
     import formatter
@@ -229,8 +248,8 @@ def test_injection():
 
 ALL = [test_asr, test_asr_silence, test_formatter_short_skips, test_formatter_cleans,
        test_formatter_ollama_down, test_corrections, test_history, test_hotwords,
-       test_failure_status, test_elevated_detect, test_overlay_error, test_mic_device,
-       test_injection]
+       test_smartfmt, test_failure_status, test_elevated_detect, test_overlay_error,
+       test_mic_device, test_injection]
 
 if __name__ == "__main__":
     wanted = sys.argv[1:] or [f.__name__ for f in ALL]

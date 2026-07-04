@@ -19,6 +19,7 @@ import corrections
 import formatter
 import history
 import injector
+import smartfmt
 from paths import BASE
 
 CONFIG = tomllib.loads((BASE / "config.toml").read_text(encoding="utf-8"))
@@ -91,6 +92,7 @@ class Pipeline:
                 text, fmt_status = formatter.clean(text)
                 result["format_s"] = time.perf_counter() - t1
                 formatted = True
+            text = smartfmt.apply(text)  # deterministic spoken→written, final authority
             result["injected"] = injector.inject(text)
             if not result["injected"]:
                 result["status"] = "paste_failed"
