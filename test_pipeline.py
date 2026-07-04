@@ -97,6 +97,17 @@ def test_history():
     assert "olama → Ollama" in text, "applied correction not recorded"
 
 
+def test_overlay_error():
+    import overlay
+    o = overlay.Overlay()
+    assert hasattr(o, "error"), "Overlay has no error() state setter"
+    o.recording()
+    assert o._state == "recording"
+    o.error()
+    print(f"  overlay state after error(): {o._state!r}")
+    assert o._state == "error", f"error() did not set the error state: {o._state!r}"
+
+
 def test_mic_device():
     import types
 
@@ -133,8 +144,8 @@ def test_injection():
 
 
 ALL = [test_asr, test_asr_silence, test_formatter_short_skips, test_formatter_cleans,
-       test_formatter_ollama_down, test_corrections, test_history, test_mic_device,
-       test_injection]
+       test_formatter_ollama_down, test_corrections, test_history, test_overlay_error,
+       test_mic_device, test_injection]
 
 if __name__ == "__main__":
     wanted = sys.argv[1:] or [f.__name__ for f in ALL]

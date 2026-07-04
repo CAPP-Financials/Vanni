@@ -24,6 +24,7 @@ _TASKBAR_CLEAR = 70               # clearance from screen bottom to the pill's b
 _ALPHA = 0.92                     # nearly solid, like the reference image
 _FILL = "#1c1c1c"                 # black pill body
 _BAR = "#f5f2e8"                  # warm white bars (matches reference)
+_BAR_ERR = "#e05a4f"              # soft red bars: a failed/empty dictation flash
 _BAR_TIP = "#8b8a82"              # dim halo beyond each bar tip -> soft vibrating edge
 _BAR_COUNT = 15
 _BAR_WIDTH = 3                    # px; with round caps a minimum-height bar is a dot
@@ -32,8 +33,9 @@ _BAR_MIN, _BAR_MAX = 0.0, _PANEL_H * 0.60  # extra extent beyond the dot
 
 class Overlay:
     def __init__(self):
-        self._state = "hidden"    # hidden | recording | processing
+        self._state = "hidden"    # hidden | recording | processing | error
         self._level = 0.0
+        self._err_until = 0.0     # error flash auto-hides after this time
 
     # -- thread-safe API ----------------------------------------------------
     def set_level(self, level: float):
@@ -46,6 +48,12 @@ class Overlay:
         """ASR/LLM running: pill stays visible, bars settle to dots."""
         self._state = "processing"
         self._level = 0.0
+
+    def error(self, seconds: float = 1.6):
+        """Flash the pill red briefly to signal a failed or empty dictation."""
+        self._state = "error"
+        self._level = 0.0
+        self._err_until = time.time() + seconds
 
     def done(self):
         self._state = "hidden"
@@ -77,6 +85,8 @@ class Overlay:
         threading.Thread(target=self.run_forever, daemon=True).start()
 
     def _tick(self):
+        if self._state == "error" and time.time() >= self._err_until:
+            self._state = "hidden"  # error flash expired
         want_visible = self._state != "hidden"
         if want_visible and not self._visible:
             self.root.deiconify()
@@ -98,12 +108,16 @@ class Overlay:
         speaking = self._state == "recording" and self._level > 0.02
         spacing = _PANEL_W * 0.72 / (_BAR_COUNT - 1)
         start_x = cx - spacing * (_BAR_COUNT - 1) / 2
+        error = self._state == "error"
+        bar_color = _BAR_ERR if error else _BAR
         for i in range(_BAR_COUNT):
             if speaking:
                 # per-bar jitter around the live level so the row dances like
                 # a real waveform instead of one synchronized pulse
                 wob = 0.5 + 0.5 * math.sin(self._phase * 2.1 + self._seeds[i] + i * 0.7)
                 target = self._level * (0.25 + 0.75 * wob)
+            elif error:
+                target = 0.30 + 0.15 * math.sin(self._phase * 2.0 + i)  # gentle red pulse
             else:
                 target = 0.0  # settle to dots (min-height bar + round caps = dot)
             self._heights[i] += (target - self._heights[i]) * 0.35
@@ -114,7 +128,7 @@ class Overlay:
             if half > 1.0:
                 c.create_line(x, cy - half - 2.5, x, cy + half + 2.5, fill=_BAR_TIP,
                               width=max(1, _BAR_WIDTH - 2), capstyle="round")
-            c.create_line(x, cy - half, x, cy + half, fill=_BAR,
+            c.create_line(x, cy - half, x, cy + half, fill=bar_color,
                           width=_BAR_WIDTH, capstyle="round")
 
     def _draw_pill(self, cx, cy):
@@ -143,7 +157,11 @@ if __name__ == "__main__":
         time.sleep(1.5)
         o.done()
         time.sleep(0.5)
-        print("overlay v10 demo OK")
+        o.error()                            # failed dictation: red flash, auto-hides
+        assert o._state == "error"
+        time.sleep(2.0)
+        assert o._state == "hidden", "error flash did not auto-hide"
+        print("overlay v10 demo OK (incl. error flash)")
         o.root.after(0, o.root.destroy)
 
     threading.Thread(target=demo, daemon=True).start()
