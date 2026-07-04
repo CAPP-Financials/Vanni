@@ -51,6 +51,22 @@ def is_foreground_elevated() -> bool:
         return False
 
 
+# settle time around the synthetic ctrl+c: lets physically-held hotkey modifiers
+# lift, and gives the target app time to answer the copy. Tuned by smoke test.
+_GRAB_SETTLE_S = 0.15
+
+
+def grab_selection() -> str:
+    """Copy the focused app's current selection and return it ('' if none).
+    A sentinel clear beforehand means stale clipboard content can never be
+    mistaken for a selection."""
+    pyperclip.copy("")
+    time.sleep(_GRAB_SETTLE_S)
+    keyboard.send("ctrl+c")
+    time.sleep(_GRAB_SETTLE_S)
+    return pyperclip.paste()
+
+
 def inject(text: str) -> bool:
     """Put text in clipboard and paste into the focused app. Returns False if the
     clipboard write didn't stick (paste itself can't be verified in arbitrary apps;

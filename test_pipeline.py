@@ -181,6 +181,43 @@ def test_snippets():
     assert r["format_s"] == 0.0, "snippet should never hit the LLM"
 
 
+def test_grab_selection():
+    import injector
+
+    class FakeClipboard:
+        """Clipboard whose content changes only when 'the app' answers ctrl+c."""
+        def __init__(self, app_selection):
+            self.content, self.app_selection = "stale junk", app_selection
+        def copy(self, text):
+            self.content = text
+        def paste(self):
+            return self.content
+
+    class FakeKeyboard:
+        def __init__(self, clip):
+            self.clip, self.sent = clip, []
+        def send(self, keys):
+            self.sent.append(keys)
+            if keys == "ctrl+c" and self.clip.app_selection:
+                self.clip.content = self.clip.app_selection
+
+    orig = (injector.pyperclip, injector.keyboard, injector._GRAB_SETTLE_S)
+    try:
+        injector._GRAB_SETTLE_S = 0.0  # no real sleeps in tests
+        clip = FakeClipboard("the selected words")
+        injector.pyperclip, injector.keyboard = clip, FakeKeyboard(clip)
+        got = injector.grab_selection()
+        print(f"  grabbed: {got!r} keys={injector.keyboard.sent}")
+        assert got == "the selected words"
+        assert injector.keyboard.sent == ["ctrl+c"]
+        # nothing selected: the sentinel clear means stale clipboard is NOT returned
+        clip = FakeClipboard(app_selection="")
+        injector.pyperclip, injector.keyboard = clip, FakeKeyboard(clip)
+        assert injector.grab_selection() == ""
+    finally:
+        injector.pyperclip, injector.keyboard, injector._GRAB_SETTLE_S = orig
+
+
 def test_failure_status():
     import asr
     import formatter
@@ -297,7 +334,7 @@ def test_injection():
 
 ALL = [test_asr, test_asr_silence, test_formatter_short_skips, test_formatter_cleans,
        test_formatter_ollama_down, test_transform, test_corrections, test_history, test_hotwords,
-       test_smartfmt, test_snippets, test_failure_status, test_elevated_detect,
+       test_smartfmt, test_snippets, test_grab_selection, test_failure_status, test_elevated_detect,
        test_overlay_error, test_mic_device, test_injection]
 
 if __name__ == "__main__":
