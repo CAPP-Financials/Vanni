@@ -19,6 +19,10 @@ vocabulary = ["Vanni", "Ollama"]
 [formatter]
 model = "phi3.5"                # Ollama model for cleanup; benchmarked fastest of 5 candidates (~300ms vs qwen3.5:4b's ~1740ms)
 fallback_model = "qwen2.5:3b"    # for <8GB VRAM machines; same-family control, non-thinking, ~900ms
+# Model for assist-mode transforms (translate/summarize/rewrite). Benchmarked
+# 2026-07-04: qwen2.5:3b beat phi3.5 on CJK translation (phi3.5 mistranslated
+# ja "Tuesday"->"Wednesday") at equal latency. Defaults to `model` if removed.
+assist_model = "qwen2.5:3b"
 word_skip_threshold = 10        # utterances under this many words skip the LLM
 enabled = true
 # -1 keeps the LLM in VRAM forever (fast but holds ~3.2GB). Set "10m" to free

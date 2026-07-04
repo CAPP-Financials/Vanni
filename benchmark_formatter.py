@@ -71,7 +71,39 @@ def bench(model: str, has_think: bool) -> dict:
     }
 
 
+TRANSFORM_CASES = [
+    ("translate to English", "bonjour le monde, tout va très bien aujourd'hui"),
+    ("translate to English", "今日の会議は火曜日に変更になりました"),           # ja
+    ("translate to English", "这个项目的进展比我们预期的要快得多"),               # zh
+    ("translate to English", "이 제품은 완전히 오프라인으로 작동합니다"),          # ko
+    ("translate to Chinese", "the meeting is moved to Tuesday"),
+    ("make this a bullet list", "we need milk and eggs and bread and coffee"),
+    ("make this uppercase", "hello world"),
+]
+
+
+def bench_transform() -> None:
+    """Manual-eyeball quality probe: formatter.transform under each candidate model.
+    Not a gate — CJK/edit quality is a judgment call recorded in BUILD_LOG."""
+    import sys
+    sys.stdout.reconfigure(encoding="utf-8")
+    import formatter
+    for model in ("phi3.5", "qwen2.5:3b"):
+        print(f"\n=== {model} ===")
+        formatter.ASSIST_MODEL = model
+        for instruction, text in TRANSFORM_CASES:
+            t0 = time.perf_counter()
+            out, status = formatter.transform(instruction, text)
+            secs = time.perf_counter() - t0
+            print(f"[{secs:5.2f}s {status:8}] {instruction!r} + {text!r}\n"
+                  f"          -> {out!r}")
+
+
 if __name__ == "__main__":
+    import sys
+    if "--transform" in sys.argv:
+        bench_transform()
+        raise SystemExit(0)
     rows = []
     for model, has_think in CANDIDATES:
         print(f"benchmarking {model}...")
