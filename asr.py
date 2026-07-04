@@ -50,6 +50,21 @@ def load_model() -> tuple[WhisperModel, str]:
     raise RuntimeError(f"no ASR model could be loaded: {last_err}")
 
 
+def _hotwords() -> str:
+    """Bias recognition toward known terms so names/jargon are heard right the
+    first time instead of fixed afterwards: corrections.json targets (the
+    intended spellings) + the user's [asr] vocabulary list. Re-read per call
+    (tiny file) so edits apply to the next dictation without a restart."""
+    import json
+    terms = [str(t) for t in CONFIG["asr"].get("vocabulary", [])]
+    p = BASE / "corrections.json"
+    if p.exists():
+        terms += list(json.loads(p.read_text(encoding="utf-8")).values())
+    seen: set[str] = set()
+    uniq = [t for t in terms if not (t.lower() in seen or seen.add(t.lower()))]
+    return " ".join(uniq)
+
+
 def transcribe(model: WhisperModel, audio: np.ndarray, language: str | None = None) -> tuple[str, float]:
     """audio: float32 mono 16kHz in [-1, 1]. Returns (text, latency_seconds)."""
     lang = language or CONFIG["asr"]["language"]
@@ -59,6 +74,7 @@ def transcribe(model: WhisperModel, audio: np.ndarray, language: str | None = No
         language=None if lang == "auto" else lang,
         vad_filter=VAD,
         beam_size=1,
+        hotwords=_hotwords() or None,
     )
     text = " ".join(s.text.strip() for s in segments).strip()
     latency = time.perf_counter() - t0

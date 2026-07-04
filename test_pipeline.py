@@ -97,6 +97,22 @@ def test_history():
     assert "olama → Ollama" in text, "applied correction not recorded"
 
 
+def test_hotwords():
+    import asr
+    captured = {}
+
+    class FakeModel:
+        def transcribe(self, audio, **kw):
+            captured.update(kw)
+            return iter(()), None
+
+    asr.transcribe(FakeModel(), np.zeros(16000, dtype="float32"))
+    hw = captured.get("hotwords") or ""
+    print(f"  hotwords: {hw!r}")
+    assert "Wispr Flow" in hw, "corrections.json targets not fed as hotwords"
+    assert "Vanni" in hw, "[asr] vocabulary terms not fed as hotwords"
+
+
 def test_failure_status():
     import asr
     import formatter
@@ -212,8 +228,9 @@ def test_injection():
 
 
 ALL = [test_asr, test_asr_silence, test_formatter_short_skips, test_formatter_cleans,
-       test_formatter_ollama_down, test_corrections, test_history, test_failure_status,
-       test_elevated_detect, test_overlay_error, test_mic_device, test_injection]
+       test_formatter_ollama_down, test_corrections, test_history, test_hotwords,
+       test_failure_status, test_elevated_detect, test_overlay_error, test_mic_device,
+       test_injection]
 
 if __name__ == "__main__":
     wanted = sys.argv[1:] or [f.__name__ for f in ALL]

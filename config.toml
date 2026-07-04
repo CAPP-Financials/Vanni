@@ -12,6 +12,9 @@ language = "en"                 # set "auto" for multilingual (see README)
 # on first use, fully offline). Trims silence before transcription — cheaper
 # and less hallucination-prone, especially on low-spec CPU-only machines.
 vad = true
+# Names/jargon Whisper should be biased toward hearing correctly (fed as
+# hotwords, together with your corrections.json targets). Edit any time.
+vocabulary = ["Vanni", "Ollama"]
 
 [formatter]
 model = "phi3.5"                # Ollama model for cleanup; benchmarked fastest of 5 candidates (~300ms vs qwen3.5:4b's ~1740ms)
