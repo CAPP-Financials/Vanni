@@ -60,27 +60,34 @@ def warm_up() -> bool:
         return False
 
 
-def format_text(text: str) -> str:
-    """Clean a transcript. <10 words or Ollama down -> return text unchanged."""
+def clean(text: str) -> tuple[str, str]:
+    """Clean a transcript; return (result_text, status).
+    status: 'ok' LLM-cleaned · 'skipped' too short for the LLM ·
+    'degraded' LLM unavailable/unusable so raw text is returned."""
     if len(text.split()) < WORD_SKIP_THRESHOLD:
-        return text
+        return text, "skipped"
     try:
         cleaned = _generate(text, MODEL)
     except requests.HTTPError:
         # primary model missing or errored (e.g. won't fit on a low-spec
         # machine) — retry once with the smaller fallback, then give up
         if not FALLBACK_MODEL:
-            return text
+            return text, "degraded"
         try:
             cleaned = _generate(text, FALLBACK_MODEL)
         except requests.RequestException:
-            return text
+            return text, "degraded"
     except requests.RequestException:
-        return text  # ponytail: degrade to raw transcript, never block dictation
+        return text, "degraded"  # ponytail: degrade to raw, never block dictation
     # guard against a chatty model returning empty or something wildly off-length
     if not cleaned or len(cleaned) > len(text) * 3:
-        return text
-    return cleaned
+        return text, "degraded"
+    return cleaned, "ok"
+
+
+def format_text(text: str) -> str:
+    """Back-compat wrapper: cleaned text only (see clean() for the status)."""
+    return clean(text)[0]
 
 
 if __name__ == "__main__":

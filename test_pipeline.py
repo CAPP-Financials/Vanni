@@ -97,6 +97,35 @@ def test_history():
     assert "olama → Ollama" in text, "applied correction not recorded"
 
 
+def test_failure_status():
+    import asr
+    import formatter
+    import history
+    import injector
+    import vanni
+    p = vanni.Pipeline.__new__(vanni.Pipeline)  # skip model load
+    p.model = None
+    audio = np.zeros(vanni.SAMPLE_RATE, dtype="float32")  # 1s, passes min-duration gate
+    orig = (asr.transcribe, formatter.clean, injector.inject, history.record)
+    try:
+        history.record = lambda *a, **k: None
+        # 1) nothing recognized -> no_speech
+        asr.transcribe = lambda m, a: ("", 0.0)
+        assert p.process(audio)["status"] == "no_speech"
+        # 2) text produced but paste blocked -> paste_failed
+        asr.transcribe = lambda m, a: ("please clean this whole sentence up for me now thanks", 0.0)
+        formatter.clean = lambda t: (t, "ok")
+        injector.inject = lambda t: False
+        assert p.process(audio)["status"] == "paste_failed"
+        # 3) pasted, but cleanup degraded to raw -> ollama_offline_raw
+        injector.inject = lambda t: True
+        formatter.clean = lambda t: (t, "degraded")
+        assert p.process(audio)["status"] == "ollama_offline_raw"
+    finally:
+        asr.transcribe, formatter.clean, injector.inject, history.record = orig
+    print("  statuses ok: no_speech / paste_failed / ollama_offline_raw")
+
+
 def test_overlay_error():
     import overlay
     o = overlay.Overlay()
@@ -144,8 +173,8 @@ def test_injection():
 
 
 ALL = [test_asr, test_asr_silence, test_formatter_short_skips, test_formatter_cleans,
-       test_formatter_ollama_down, test_corrections, test_history, test_overlay_error,
-       test_mic_device, test_injection]
+       test_formatter_ollama_down, test_corrections, test_history, test_failure_status,
+       test_overlay_error, test_mic_device, test_injection]
 
 if __name__ == "__main__":
     wanted = sys.argv[1:] or [f.__name__ for f in ALL]

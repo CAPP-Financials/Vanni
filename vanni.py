@@ -75,21 +75,29 @@ class Pipeline:
 
     def process(self, audio: np.ndarray, use_formatter: bool = True) -> dict:
         """audio: float32 mono 16k. Returns timing/result dict; injects on success."""
-        result = {"text": "", "asr_s": 0.0, "format_s": 0.0, "total_s": 0.0, "injected": False}
+        result = {"text": "", "asr_s": 0.0, "format_s": 0.0, "total_s": 0.0,
+                  "injected": False, "status": "no_speech"}
         if len(audio) < MIN_SECONDS * SAMPLE_RATE:
-            return result
+            return result  # too short -> no_speech
         t0 = time.perf_counter()
         raw, result["asr_s"] = asr.transcribe(self.model, audio)
         # deterministic mishear fixes, zero latency
         text, fixes = corrections.apply_verbose(raw)
         formatted = False
+        fmt_status = "skipped"
         if text:
             if use_formatter and CONFIG["formatter"]["enabled"]:
                 t1 = time.perf_counter()
-                text = formatter.format_text(text)
+                text, fmt_status = formatter.clean(text)
                 result["format_s"] = time.perf_counter() - t1
                 formatted = True
             result["injected"] = injector.inject(text)
+            if not result["injected"]:
+                result["status"] = "paste_failed"
+            elif fmt_status == "degraded":
+                result["status"] = "ollama_offline_raw"
+            else:
+                result["status"] = "ok"
         result["text"] = text
         result["total_s"] = time.perf_counter() - t0
         history.record(raw, text, mode="formatted" if formatted else "raw",
@@ -189,11 +197,26 @@ def run_tray(pipeline: Pipeline):
                 with busy:
                     audio = recorder.stop()
                     r = pipeline.process(audio, use_formatter and state["cleanup"])
-                    indicator.done()  # processing finished -> hide overlay
+                    # visible feedback so failures aren't silent: red flash for
+                    # hard failures, a tray notification for anything non-ok
+                    if r["status"] in ("no_speech", "paste_failed"):
+                        indicator.error()
+                    else:
+                        indicator.done()
+                    msg = {
+                        "no_speech": "No speech detected",
+                        "paste_failed": "Paste failed — text is in your clipboard",
+                        "ollama_offline_raw": "Cleanup unavailable — pasted raw",
+                    }.get(r["status"])
+                    if msg:
+                        try:
+                            icon.notify(msg, "Vanni")
+                        except Exception:
+                            pass  # notifications must never break dictation
+                        print(f"[{time.strftime('%H:%M:%S')}] {msg}")
                     if r["text"]:
                         print(f"[{time.strftime('%H:%M:%S')}] {r['text']!r} "
-                              f"(asr {r['asr_s']:.2f}s, fmt {r['format_s']:.2f}s, total {r['total_s']:.2f}s"
-                              f"{'' if r['injected'] else ', INJECT FAILED — text is in clipboard'})")
+                              f"(asr {r['asr_s']:.2f}s, fmt {r['format_s']:.2f}s, total {r['total_s']:.2f}s)")
                     set_status("idle")
 
             threading.Thread(target=work, daemon=True).start()
