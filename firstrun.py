@@ -22,6 +22,53 @@ CONFIG = tomllib.loads((BASE / "config.toml").read_text(encoding="utf-8"))
 _MARKER = BASE / ".setup_done"
 
 
+# Hardware-matched ASR tiers. LLM model names never change per tier —
+# gemma2:2b runs fine on CPU via Ollama; only whether cleanup is ON varies.
+TIERS = {
+    "gpu": {"model": "large-v3-turbo", "compute_type": "int8_float16",
+            "formatter_enabled": True,
+            "blurb": "Best accuracy, near-instant (NVIDIA GPU, ~1.5GB Whisper "
+                     "+ ~700MB CUDA + ~2GB cleanup model download)"},
+    "cpu": {"model": "small.en", "compute_type": "int8",
+            "formatter_enabled": True,
+            "blurb": "Good accuracy, English only, runs on any CPU "
+                     "(~500MB Whisper + ~2GB cleanup model download)"},
+    "lite": {"model": "small.en", "compute_type": "int8",
+             "formatter_enabled": False,
+             "blurb": "Lightest: raw dictation without LLM cleanup, "
+                      "for low-memory laptops (~500MB download)"},
+}
+
+
+def probe_hardware() -> dict:
+    """Best-effort {vram_mb, ram_gb, cores}; zeros when undetectable, never raises."""
+    vram_mb = 0
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5)
+        vram_mb = int(out.stdout.split()[0]) if out.returncode == 0 else 0
+    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+        pass
+    ram_gb = 0
+    try:
+        import ctypes
+        kb = ctypes.c_ulonglong(0)
+        if ctypes.windll.kernel32.GetPhysicallyInstalledSystemMemory(ctypes.byref(kb)):
+            ram_gb = round(kb.value / 2**20)
+    except Exception:
+        pass
+    import os
+    return {"vram_mb": vram_mb, "ram_gb": ram_gb, "cores": os.cpu_count() or 0}
+
+
+def recommend(vram_mb: int, ram_gb: int) -> str:
+    """Pure tier mapper: GPU with >=6GB VRAM -> gpu; >=16GB RAM -> cpu; else lite."""
+    if vram_mb >= 6000:
+        return "gpu"
+    return "cpu" if ram_gb >= 16 else "lite"
+
+
 def _installed_models(url: str) -> list[str] | None:
     """Model names known to the local Ollama, or None if it's unreachable."""
     try:

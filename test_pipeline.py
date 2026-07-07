@@ -191,6 +191,22 @@ def test_snippets():
     assert r["format_s"] == 0.0, "snippet should never hit the LLM"
 
 
+def test_hw_recommend():
+    import firstrun
+    hw = firstrun.probe_hardware()
+    print(f"  probe: {hw}")
+    # this dev machine has an RTX 4060 (8GB) — all three probes must see hardware
+    assert hw["vram_mb"] > 0 and hw["ram_gb"] > 0 and hw["cores"] > 0
+    # pure tier mapping
+    assert firstrun.recommend(8000, 32) == "gpu"
+    assert firstrun.recommend(0, 32) == "cpu"
+    assert firstrun.recommend(4000, 32) == "cpu"   # small GPU -> CPU whisper
+    assert firstrun.recommend(0, 8) == "lite"
+    for name, tier in firstrun.TIERS.items():
+        assert tier["model"] and tier["compute_type"] and tier["blurb"], name
+        assert isinstance(tier["formatter_enabled"], bool), name
+
+
 def test_grab_selection():
     import injector
 
@@ -398,7 +414,7 @@ def test_injection():
 
 ALL = [test_asr, test_asr_silence, test_formatter_short_skips, test_formatter_cleans,
        test_formatter_ollama_down, test_transform, test_corrections, test_history, test_hotwords,
-       test_smartfmt, test_snippets, test_grab_selection, test_assist_pipeline,
+       test_smartfmt, test_snippets, test_hw_recommend, test_grab_selection, test_assist_pipeline,
        test_failure_status, test_elevated_detect,
        test_overlay_error, test_mic_device, test_injection]
 
