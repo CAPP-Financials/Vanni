@@ -411,6 +411,9 @@ if __name__ == "__main__":
     ap.add_argument("--raw", action="store_true", help="skip LLM cleanup")
     args = ap.parse_args()
 
+    import firstrun
+    if firstrun.should_run_wizard(simulate=bool(args.simulate)):
+        firstrun.wizard()  # before Pipeline() so the chosen ASR model is the one loaded
     pipeline = Pipeline()
     if args.simulate:
         r = run_simulate(pipeline, args.simulate, args.target, args.raw)

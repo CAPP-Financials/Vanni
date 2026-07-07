@@ -263,6 +263,25 @@ def test_apply_tier():
             vanni.CONFIG["formatter"]["enabled"] = orig_enabled
 
 
+def test_wizard_gate():
+    import tempfile
+    from pathlib import Path
+    import firstrun
+    assert callable(firstrun.wizard), "wizard dialog missing"
+    orig = firstrun._MARKER
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            firstrun._MARKER = Path(td) / ".setup_done"
+            assert firstrun.should_run_wizard(simulate=False) is True
+            assert firstrun.should_run_wizard(simulate=True) is False, \
+                "wizard must never block a headless simulate run"
+            firstrun._MARKER.write_text("done")
+            assert firstrun.should_run_wizard(simulate=False) is False
+        print("  wizard gate: first-launch only, never under simulate")
+    finally:
+        firstrun._MARKER = orig
+
+
 def test_grab_selection():
     import injector
 
@@ -471,7 +490,7 @@ def test_injection():
 ALL = [test_asr, test_asr_silence, test_formatter_short_skips, test_formatter_cleans,
        test_formatter_ollama_down, test_transform, test_corrections, test_history, test_hotwords,
        test_smartfmt, test_snippets, test_hw_recommend, test_config_set,
-       test_apply_tier, test_grab_selection, test_assist_pipeline,
+       test_apply_tier, test_wizard_gate, test_grab_selection, test_assist_pipeline,
        test_failure_status, test_elevated_detect,
        test_overlay_error, test_mic_device, test_injection]
 

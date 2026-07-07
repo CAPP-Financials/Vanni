@@ -103,6 +103,66 @@ def apply_tier(name: str, path=None) -> None:
         sys.modules["vanni"].CONFIG["formatter"]["enabled"] = tier["formatter_enabled"]
 
 
+def should_run_wizard(simulate: bool) -> bool:
+    """First interactive launch only: never for headless simulate runs, never
+    once setup has completed (the .setup_done marker)."""
+    return not simulate and not _MARKER.exists()
+
+
+def wizard() -> None:
+    """First-launch Tk dialog: detected hardware, one radio per TIERS entry
+    with its trade-off line, recommended tier preselected. Auto-accepts the
+    selection after 30s so a hidden/background launch never hangs. Console
+    input() is impossible here — the app usually starts with stdin unwired."""
+    import tkinter as tk
+    hw = probe_hardware()
+    rec = recommend(hw["vram_mb"], hw["ram_gb"])
+    offer_ollama = not shutil.which("ollama")
+
+    root = tk.Tk()
+    root.title("Vanni setup")
+    root.attributes("-topmost", True)
+    tk.Label(root, font=("Segoe UI", 10, "bold"), justify="left", anchor="w",
+             text=f"Detected: {hw['vram_mb'] // 1024}GB GPU VRAM · "
+                  f"{hw['ram_gb']}GB RAM · {hw['cores']} cores"
+             ).pack(fill="x", padx=14, pady=(12, 6))
+    choice = tk.StringVar(value=rec)
+    for name, tier in TIERS.items():
+        star = "  ← recommended for this machine" if name == rec else ""
+        tk.Radiobutton(root, variable=choice, value=name, justify="left", anchor="w",
+                       wraplength=460, text=f"{name}: {tier['blurb']}{star}"
+                       ).pack(fill="x", padx=14, pady=2)
+    ollama_var = tk.BooleanVar(value=offer_ollama)
+    if offer_ollama:
+        tk.Checkbutton(root, variable=ollama_var, justify="left", anchor="w",
+                       text="Install Ollama now via winget (needed for LLM cleanup/assist)"
+                       ).pack(fill="x", padx=14, pady=(8, 0))
+    countdown = tk.Label(root, fg="gray")
+    countdown.pack(pady=(6, 0))
+    tk.Button(root, text="OK", width=12, command=root.destroy).pack(pady=(4, 12))
+
+    def tick(left=30):
+        if left <= 0:
+            root.destroy()
+            return
+        countdown.config(text=f"auto-continuing with the selection in {left}s")
+        root.after(1000, tick, left - 1)
+    tick()
+    root.mainloop()
+
+    apply_tier(choice.get())
+    print(f"setup: '{choice.get()}' tier applied "
+          f"({TIERS[choice.get()]['model']}, cleanup "
+          f"{'on' if TIERS[choice.get()]['formatter_enabled'] else 'off'})")
+    if offer_ollama and ollama_var.get():
+        print("setup: installing Ollama via winget (one time)...")
+        try:
+            subprocess.run(["winget", "install", "-e", "--id", "Ollama.Ollama",
+                            "--accept-source-agreements", "--accept-package-agreements"])
+        except OSError:
+            print("setup: winget unavailable — install Ollama manually from ollama.com")
+
+
 def _installed_models(url: str) -> list[str] | None:
     """Model names known to the local Ollama, or None if it's unreachable."""
     try:
