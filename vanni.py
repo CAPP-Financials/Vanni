@@ -328,10 +328,30 @@ def run_tray(pipeline: Pipeline):
               if d["max_input_channels"] > 0]
     mic_menu = pystray.Menu(default_item(), *(make_device_item(i, n) for i, n in inputs))
 
+    import firstrun
+
+    def make_tier_item(name, tier):
+        def on_click(icon_, item_):
+            firstrun.apply_tier(name)
+            try:
+                icon.notify("Restart Vanni to load the new speech model", "Vanni")
+            except Exception:
+                pass
+        # checked = config matches this tier (gpu/cpu differ by model,
+        # cpu/lite differ by cleanup being enabled)
+        return pystray.MenuItem(
+            f"{name}: {tier['blurb']}", on_click, radio=True,
+            checked=lambda item, n=name: (
+                firstrun.TIERS[n]["model"] == CONFIG["asr"]["model"]
+                and firstrun.TIERS[n]["formatter_enabled"] == CONFIG["formatter"]["enabled"]))
+
+    quality_menu = pystray.Menu(*(make_tier_item(n, t) for n, t in firstrun.TIERS.items()))
+
     icon.menu = pystray.Menu(
         pystray.MenuItem(lambda i: f"LLM cleanup: {'on' if state['cleanup'] else 'off'}",
                          toggle_cleanup),
         pystray.MenuItem("Microphone", mic_menu),
+        pystray.MenuItem("Model quality", quality_menu),
         pystray.MenuItem("Quit", quit_app),
     )
     print(f"Vanni running. Hold {CONFIG['hotkeys']['dictate']} to dictate "

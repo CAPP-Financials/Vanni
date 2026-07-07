@@ -232,6 +232,37 @@ def test_config_set():
         assert len(diff) == 2
 
 
+def test_apply_tier():
+    import shutil
+    import tempfile
+    import tomllib
+    from pathlib import Path
+    import asr
+    import firstrun
+    # tier changes must take effect on the NEXT load_model call, so the
+    # fallback ladder may no longer be frozen at import time
+    assert not hasattr(asr, "_FALLBACKS"), "_FALLBACKS must move inside load_model"
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td) / "config.toml"
+        shutil.copy("config.toml", tmp)
+        import vanni
+        orig = dict(asr.CONFIG["asr"])
+        orig_enabled = vanni.CONFIG["formatter"]["enabled"]
+        try:
+            firstrun.apply_tier("lite", path=tmp)
+            cfg = tomllib.loads(tmp.read_text(encoding="utf-8"))
+            assert cfg["asr"]["model"] == "small.en"
+            assert cfg["asr"]["compute_type"] == "int8"
+            assert cfg["formatter"]["enabled"] is False
+            # in-memory configs updated too (choice applies this launch)
+            assert asr.CONFIG["asr"]["model"] == "small.en"
+            assert vanni.CONFIG["formatter"]["enabled"] is False
+            print("  lite tier applied to file + in-memory config")
+        finally:
+            asr.CONFIG["asr"].update(orig)
+            vanni.CONFIG["formatter"]["enabled"] = orig_enabled
+
+
 def test_grab_selection():
     import injector
 
@@ -440,7 +471,7 @@ def test_injection():
 ALL = [test_asr, test_asr_silence, test_formatter_short_skips, test_formatter_cleans,
        test_formatter_ollama_down, test_transform, test_corrections, test_history, test_hotwords,
        test_smartfmt, test_snippets, test_hw_recommend, test_config_set,
-       test_grab_selection, test_assist_pipeline,
+       test_apply_tier, test_grab_selection, test_assist_pipeline,
        test_failure_status, test_elevated_detect,
        test_overlay_error, test_mic_device, test_injection]
 

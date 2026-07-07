@@ -30,18 +30,17 @@ JUNK = {
 # fully offline afterwards, no API/token cost (config: [asr] vad)
 VAD = CONFIG["asr"].get("vad", True)
 
-# Degradation ladder so Vanni runs on low-performance laptops too: GPU model ->
-# lighter GPU model -> small.en on CPU. Everything stays local and free.
-_FALLBACKS = [
-    (CONFIG["asr"]["model"], "cuda", CONFIG["asr"]["compute_type"]),
-    ("distil-large-v3", "cuda", "int8_float16"),
-    ("small.en", "cpu", "int8"),
-]
-
-
 def load_model() -> tuple[WhisperModel, str]:
+    # Degradation ladder so Vanni runs on low-performance laptops too: GPU model
+    # -> lighter GPU model -> small.en on CPU. Built at call time (not import)
+    # so a wizard/tray tier change applies to the next load without a restart.
+    fallbacks = [
+        (CONFIG["asr"]["model"], "cuda", CONFIG["asr"]["compute_type"]),
+        ("distil-large-v3", "cuda", "int8_float16"),
+        ("small.en", "cpu", "int8"),
+    ]
     last_err = None
-    for name, device, compute in _FALLBACKS:
+    for name, device, compute in fallbacks:
         try:
             model = WhisperModel(name, device=device, compute_type=compute)
             return model, f"{name} ({device}/{compute})"

@@ -88,6 +88,21 @@ def config_set(section: str, key: str, value, path=None) -> None:
     path.write_text("".join(lines), encoding="utf-8")
 
 
+def apply_tier(name: str, path=None) -> None:
+    """Write a TIERS choice to config.toml AND into the already-imported config
+    dicts, so the choice takes effect this launch (ASR loads after the wizard)."""
+    import sys
+    tier = TIERS[name]
+    config_set("asr", "model", tier["model"], path=path)
+    config_set("asr", "compute_type", tier["compute_type"], path=path)
+    config_set("formatter", "enabled", tier["formatter_enabled"], path=path)
+    if "asr" in sys.modules:
+        sys.modules["asr"].CONFIG["asr"].update(
+            model=tier["model"], compute_type=tier["compute_type"])
+    if "vanni" in sys.modules:
+        sys.modules["vanni"].CONFIG["formatter"]["enabled"] = tier["formatter_enabled"]
+
+
 def _installed_models(url: str) -> list[str] | None:
     """Model names known to the local Ollama, or None if it's unreachable."""
     try:
