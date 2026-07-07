@@ -69,6 +69,25 @@ def recommend(vram_mb: int, ram_gb: int) -> str:
     return "cpu" if ram_gb >= 16 else "lite"
 
 
+def config_set(section: str, key: str, value, path=None) -> None:
+    """Rewrite one `key = ...` line inside [section] of config.toml, preserving
+    everything else byte-for-byte. Needed because keys like `model`/`enabled`
+    appear in more than one section — a plain regex would clobber both."""
+    path = path or (BASE / "config.toml")
+    literal = {True: "true", False: "false"}.get(value, f'"{value}"')
+    lines, current = path.read_text(encoding="utf-8").splitlines(keepends=True), None
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("["):
+            current = stripped.strip("[]")
+        elif current == section and stripped.startswith(f"{key} ="):
+            head = line.partition("=")[0]
+            comment = (" #" + line.split("#", 1)[1].rstrip()) if "#" in line else ""
+            lines[i] = f"{head}= {literal}{comment}\n"
+            break
+    path.write_text("".join(lines), encoding="utf-8")
+
+
 def _installed_models(url: str) -> list[str] | None:
     """Model names known to the local Ollama, or None if it's unreachable."""
     try:

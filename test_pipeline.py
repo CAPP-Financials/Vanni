@@ -207,6 +207,31 @@ def test_hw_recommend():
         assert isinstance(tier["formatter_enabled"], bool), name
 
 
+def test_config_set():
+    import shutil
+    import tempfile
+    from pathlib import Path
+    import firstrun
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td) / "config.toml"
+        shutil.copy("config.toml", tmp)
+        before = tmp.read_text(encoding="utf-8")
+        # [asr] model must change; [formatter] model must NOT (key appears in both)
+        firstrun.config_set("asr", "model", "small.en", path=tmp)
+        firstrun.config_set("formatter", "enabled", False, path=tmp)
+        after = tmp.read_text(encoding="utf-8")
+        import tomllib
+        cfg = tomllib.loads(after)
+        assert cfg["asr"]["model"] == "small.en"
+        assert cfg["formatter"]["model"] == "gemma2:2b", "clobbered the wrong section"
+        assert cfg["formatter"]["enabled"] is False
+        assert cfg["history"]["enabled"] is True, "clobbered [history] enabled"
+        # only the two targeted lines changed
+        diff = [(a, b) for a, b in zip(before.splitlines(), after.splitlines()) if a != b]
+        print(f"  changed lines: {[b for _, b in diff]}")
+        assert len(diff) == 2
+
+
 def test_grab_selection():
     import injector
 
@@ -414,7 +439,8 @@ def test_injection():
 
 ALL = [test_asr, test_asr_silence, test_formatter_short_skips, test_formatter_cleans,
        test_formatter_ollama_down, test_transform, test_corrections, test_history, test_hotwords,
-       test_smartfmt, test_snippets, test_hw_recommend, test_grab_selection, test_assist_pipeline,
+       test_smartfmt, test_snippets, test_hw_recommend, test_config_set,
+       test_grab_selection, test_assist_pipeline,
        test_failure_status, test_elevated_detect,
        test_overlay_error, test_mic_device, test_injection]
 
