@@ -66,3 +66,14 @@ added (history backup of the original, 1500-word selection ceiling).
 - **injector.grab_selection** (C3-G3): sentinel-clear -> synthetic ctrl+c -> clipboard read; empty = no selection, stale clipboard can't false-positive.
 - **Assist pipeline + hotkey** (C3-G4): `Pipeline.process_assist` (grab -> instruction ASR + corrections -> transform -> paste over selection); statuses no_selection / assist_failed / selection_too_long; original selection always recorded to history. `handle()` generalized per-pipeline; per-press release dispatch fixed the unbound-r2 quirk (raw-mode releases used to route through the formatted closure). Hold `ctrl+alt+space`, speak the instruction.
 - **Release** (C3-G5): installer AppVersion 1.2.0 -> 1.3.0. Test suite 15 -> 18 tests, all green.
+
+### v1.4.0 — 2026-07-07 · Hardware-adaptive setup + slim installer (cycle 4)
+Adoption cycle, same test-gated loop. The 947MB installer was 85% CUDA DLLs
+(nvidia cublas+cudnn = 1,806MB of the 2.1GB bundle) while all models already
+downloaded at first launch — so CUDA now downloads on demand too.
+- **Hardware probe + tiers** (C4-G1): `firstrun.probe_hardware()` (nvidia-smi VRAM / GetPhysicallyInstalledSystemMemory / cpu_count) + pure `recommend()` over TIERS: gpu (≥6GB VRAM → large-v3-turbo), cpu (≥16GB RAM → small.en), lite (small.en + cleanup off).
+- **Section-aware config writes** (C4-G2): `config_set(section, key, value)` — `model`/`enabled` appear in two sections each; the old single-regex pattern would clobber the wrong one.
+- **apply_tier + tray menu** (C4-G3): writes the tier to config.toml AND the in-memory config dicts; `asr._FALLBACKS` moved inside `load_model()` (call-time, not import-time); tray "Model quality" radio submenu.
+- **First-launch wizard** (C4-G4): Tk dialog (stdin is never wired — app starts hidden/Run-key): detected hardware, tier radios with trade-off blurbs, recommended preselected, 30s auto-accept, optional winget Ollama install. Never fires under --simulate.
+- **CUDA on demand** (C4-G5): Vanni.spec no longer bundles nvidia DLLs; `ensure_cuda()` fetches pinned wheels (cublas 12.9.2.10, cudnn 9.24.0.43 — exact versions the build was tested against) from PyPI, sha256 pinned in code, extracts only `nvidia/*/bin/*.dll` next to the exe; asr DLL registration re-runs from `load_model` (first-launch ordering). Honest framing: total first-run download is similar (~1.2GB CUDA on GPU machines) — the win is the small installer.
+- **Release** (C4-G6): installer AppVersion 1.3.0 -> 1.4.0. Test suite 18 -> 22 tests, all green.

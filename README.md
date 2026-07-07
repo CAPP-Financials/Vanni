@@ -67,9 +67,12 @@ python -m venv .venv
 .\.venv\Scripts\python vanni.py
 ```
 
-First run downloads the Whisper speech model (~1.5GB) and, if Ollama is installed,
-pulls the configured cleanup model(s) automatically (`firstrun.py`). Everything after
-that is offline.
+First run shows a small setup window: it detects your GPU/RAM and recommends a
+speech-model tier (best / CPU / lite) with the trade-offs spelled out — accept or
+pick another; change any time via the tray "Model quality" menu. It then downloads
+what your choice needs: the Whisper model (0.5–1.5GB), the CUDA runtime on NVIDIA
+machines (~1.2GB, sha256-verified from PyPI), and the Ollama cleanup model(s) if
+Ollama is installed (`firstrun.py`). Everything after that is offline.
 
 | Hotkey | Action |
 |---|---|
@@ -112,9 +115,9 @@ shown during setup.
 Copy-Item config.toml, corrections.json dist\Vanni\
 ```
 
-`dist/Vanni/` is then a self-contained portable folder (~2.1GB, CUDA bundled) — copy
-it anywhere, no installer, no Python needed. First launch is slow once (Defender scans
-the fresh DLLs).
+`dist/Vanni/` is then a self-contained portable folder (~300MB — CUDA is no longer
+bundled; on NVIDIA machines the first launch downloads it from PyPI, sha256-verified,
+~1.2GB one time). Copy it anywhere, no installer, no Python needed.
 
 ```powershell
 winget install JRSoftware.InnoSetup    # one time

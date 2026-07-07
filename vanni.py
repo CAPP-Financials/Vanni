@@ -50,8 +50,17 @@ def ensure_ollama() -> bool:
         return True
     print("Ollama is down — starting it...")
     flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+    # strip our own dirs from the child's PATH: a frozen run prepends _internal/
+    # CUDA dirs, and an inheriting Ollama then loads OUR DLLs — locking the
+    # install folder and breaking upgrades/rebuilds while Ollama runs
+    import os
+    env = dict(os.environ)
+    from paths import BASE, BUNDLE
+    env["PATH"] = os.pathsep.join(
+        p for p in env.get("PATH", "").split(os.pathsep)
+        if p and not p.startswith((str(BASE), str(BUNDLE))))
     try:
-        subprocess.Popen(["ollama", "serve"], creationflags=flags,
+        subprocess.Popen(["ollama", "serve"], creationflags=flags, env=env,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except FileNotFoundError:
         print("ollama executable not found on PATH — cleanup will degrade to raw text")

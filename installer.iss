@@ -3,7 +3,7 @@
 ; Output: Output\VanniSetup.exe
 
 #define AppName "Vanni"
-#define AppVersion "1.3.0"
+#define AppVersion "1.4.0"
 #define AppExe "Vanni.exe"
 
 [Setup]
@@ -17,7 +17,8 @@ InfoBeforeFile=INSTALL_NOTES.md
 OutputBaseFilename=VanniSetup
 Compression=lzma2
 SolidCompression=yes
-; the onedir bundle is ~2.1 GB (CUDA included) — disable the disk spanning default
+; the onedir bundle is ~300 MB since v1.4.0 (CUDA no longer bundled — downloaded
+; sha256-verified at first launch on GPU machines by firstrun.ensure_cuda)
 DiskSpanning=no
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
@@ -30,7 +31,7 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; Flags: unchecked
 [Files]
 ; exclude user-editable/runtime files that may sit in dist\Vanni from a portable run
 Source: "dist\Vanni\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion; \
-    Excludes: "config.toml,corrections.json,snippets.json,.setup_done,history\*"
+    Excludes: "config.toml,corrections.json,snippets.json,.setup_done,history\*,nvidia\*"
 ; user-editable config lives next to the exe (see paths.py BASE); don't clobber edits on upgrade
 Source: "config.toml"; DestDir: "{app}"; Flags: onlyifdoesntexist
 Source: "corrections.json"; DestDir: "{app}"; Flags: onlyifdoesntexist
