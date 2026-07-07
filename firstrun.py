@@ -16,10 +16,66 @@ import subprocess
 import tomllib
 import urllib.request
 
-from paths import BASE
+from paths import BASE, FROZEN
 
 CONFIG = tomllib.loads((BASE / "config.toml").read_text(encoding="utf-8"))
 _MARKER = BASE / ".setup_done"
+
+# CUDA runtime, downloaded on demand instead of bundled (saves ~1.8GB in the
+# installer). Exact versions the app was built/tested against; sha256 pinned
+# so the unsigned app never loads an unverified DLL. Sizes: ~528MB + ~703MB.
+_CUDA_WHEELS = [
+    ("nvidia-cublas-cu12", "12.9.2.10",
+     "623f43027d40d44ceadf0043f002bd25cf353e8f13ce90b9a87057019f560661"),
+    ("nvidia-cudnn-cu12", "9.24.0.43",
+     "cbd41a0ab084422c936dc9fb2fc89be5ea9a85bc421c6f23d0243bdfc945fbef"),
+]
+
+
+def ensure_cuda(base=None) -> None:
+    """First GPU launch: fetch the pinned CUDA wheels from PyPI, verify sha256,
+    extract only the nvidia/*/bin DLLs next to the exe. Skipped when already
+    present, when there's no NVIDIA GPU, or when running from source (the venv
+    has the wheels). Any failure prints one line and returns — the ASR CPU
+    fallback chain covers the rest."""
+    import hashlib
+    import tempfile
+    import zipfile
+    if base is None:
+        if not FROZEN:
+            return
+        base = BASE
+    if (base / "nvidia" / "cublas" / "bin").is_dir():
+        return
+    if not shutil.which("nvidia-smi"):
+        return  # no NVIDIA GPU — CPU models don't need these DLLs
+    for name, ver, want in _CUDA_WHEELS:
+        try:
+            with urllib.request.urlopen(
+                    f"https://pypi.org/pypi/{name}/{ver}/json", timeout=15) as r:
+                files = json.load(r)["urls"]
+            wheel = next(f for f in files if "win_amd64" in f["filename"])
+            print(f"first launch: downloading GPU runtime {wheel['filename']} "
+                  f"({wheel['size'] // 2**20} MB, one time)...")
+            with tempfile.TemporaryFile() as tmp:
+                sha = hashlib.sha256()
+                with urllib.request.urlopen(wheel["url"], timeout=60) as r:
+                    while chunk := r.read(1 << 20):
+                        tmp.write(chunk)
+                        sha.update(chunk)
+                if sha.hexdigest() != want:
+                    print(f"GPU runtime {name}: checksum mismatch — skipping "
+                          "(Vanni will run on CPU; relaunch to retry)")
+                    return
+                with zipfile.ZipFile(tmp) as z:
+                    for m in z.namelist():
+                        if m.startswith("nvidia/") and "/bin/" in m and m.endswith(".dll"):
+                            z.extract(m, base)
+        except Exception as e:
+            print(f"GPU runtime download failed ({e}) — Vanni will run on CPU; "
+                  "relaunch to retry")
+            return
+    print("GPU runtime ready.")
 
 
 # Hardware-matched ASR tiers. LLM model names never change per tier —

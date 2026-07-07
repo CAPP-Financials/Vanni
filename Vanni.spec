@@ -2,7 +2,9 @@
 from PyInstaller.utils.hooks import collect_all
 
 datas = []
-binaries = [('.venv/Lib/site-packages/nvidia/cublas/bin', 'nvidia/cublas/bin'), ('.venv/Lib/site-packages/nvidia/cudnn/bin', 'nvidia/cudnn/bin')]
+# CUDA DLLs (cublas/cudnn, ~1.8GB) are intentionally NOT bundled: they are
+# downloaded sha256-verified at first launch on GPU machines (firstrun.ensure_cuda)
+binaries = []
 hiddenimports = []
 tmp_ret = collect_all('faster_whisper')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]

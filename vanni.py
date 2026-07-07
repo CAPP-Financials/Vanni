@@ -70,6 +70,7 @@ class Pipeline:
         import firstrun
         ensure_ollama()
         firstrun.ensure_models()  # first launch: pull missing Ollama models
+        firstrun.ensure_cuda()    # first GPU launch: fetch CUDA DLLs (not bundled)
         if not firstrun._MARKER.exists():
             print("first launch: the speech model (~1.5GB) downloads automatically below — one time only")
         print("loading ASR model...")

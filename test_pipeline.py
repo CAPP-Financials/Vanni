@@ -282,6 +282,63 @@ def test_wizard_gate():
         firstrun._MARKER = orig
 
 
+def test_ensure_cuda():
+    import hashlib
+    import io
+    import json as _json
+    import tempfile
+    import zipfile
+    from pathlib import Path
+    import firstrun
+    # the spec must no longer bundle CUDA (that's the whole point)
+    spec = Path("Vanni.spec").read_text(encoding="utf-8")
+    assert "nvidia/cublas" not in spec and "nvidia/cudnn" not in spec
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("nvidia/cublas/bin/fake.dll", b"dll-bytes")
+        z.writestr("nvidia/cublas/lib/other.txt", b"must not be extracted")
+    wheel = buf.getvalue()
+    good_hash = hashlib.sha256(wheel).hexdigest()
+
+    def fake_urlopen(url, timeout=None):
+        if str(url).endswith("/json"):
+            return io.BytesIO(_json.dumps({"urls": [
+                {"filename": "fake-1.0-py3-none-win_amd64.whl",
+                 "url": "https://fake/wheel", "size": len(wheel)}]}).encode())
+        return io.BytesIO(wheel)
+
+    def boom(*a, **k):
+        raise AssertionError("network hit when it must not be")
+
+    orig = (firstrun.urllib.request.urlopen, firstrun.shutil.which, firstrun._CUDA_WHEELS)
+    try:
+        firstrun.urllib.request.urlopen = fake_urlopen
+        firstrun.shutil.which = lambda n: "C:/fake/nvidia-smi.exe"
+        firstrun._CUDA_WHEELS = [("fake-pkg", "1.0", good_hash)]
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            firstrun.ensure_cuda(base=base)
+            assert (base / "nvidia/cublas/bin/fake.dll").read_bytes() == b"dll-bytes"
+            assert not (base / "nvidia/cublas/lib/other.txt").exists(), "extracted non-DLL"
+            firstrun.urllib.request.urlopen = boom  # already present -> no download
+            firstrun.ensure_cuda(base=base)
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            firstrun.urllib.request.urlopen = fake_urlopen
+            firstrun._CUDA_WHEELS = [("fake-pkg", "1.0", "0" * 64)]  # bad hash
+            firstrun.ensure_cuda(base=base)  # must not raise
+            assert not (base / "nvidia").exists(), "extracted despite bad sha256"
+        with tempfile.TemporaryDirectory() as td:
+            firstrun.shutil.which = lambda n: None  # no GPU -> no network
+            firstrun.urllib.request.urlopen = boom
+            firstrun.ensure_cuda(base=Path(td))
+        print("  ensure_cuda: extract / skip-present / bad-hash / no-gpu OK")
+    finally:
+        (firstrun.urllib.request.urlopen, firstrun.shutil.which,
+         firstrun._CUDA_WHEELS) = orig
+
+
 def test_grab_selection():
     import injector
 
@@ -490,7 +547,8 @@ def test_injection():
 ALL = [test_asr, test_asr_silence, test_formatter_short_skips, test_formatter_cleans,
        test_formatter_ollama_down, test_transform, test_corrections, test_history, test_hotwords,
        test_smartfmt, test_snippets, test_hw_recommend, test_config_set,
-       test_apply_tier, test_wizard_gate, test_grab_selection, test_assist_pipeline,
+       test_apply_tier, test_wizard_gate, test_ensure_cuda,
+       test_grab_selection, test_assist_pipeline,
        test_failure_status, test_elevated_detect,
        test_overlay_error, test_mic_device, test_injection]
 

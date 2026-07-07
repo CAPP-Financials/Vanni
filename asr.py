@@ -6,14 +6,27 @@ from pathlib import Path
 
 from paths import BASE, BUNDLE, FROZEN
 
-# CTranslate2 needs cuBLAS/cuDNN DLLs: from the pip wheels in dev, from the
-# bundle in a frozen (PyInstaller) build
-_dll_root = BUNDLE if FROZEN else BASE / ".venv" / "Lib" / "site-packages"
-for _pkg in ("nvidia/cublas/bin", "nvidia/cudnn/bin"):
-    _p = _dll_root / _pkg
-    if _p.is_dir():
-        os.add_dll_directory(str(_p))
-        os.environ["PATH"] = str(_p) + os.pathsep + os.environ["PATH"]
+# CTranslate2 needs cuBLAS/cuDNN DLLs: downloaded next to the exe at first
+# launch when frozen (firstrun.ensure_cuda), from the pip wheels in dev.
+# BASE first — that's where ensure_cuda extracts; BUNDLE kept for old bundles.
+_dll_dirs_added: set = set()
+
+
+def _add_dll_dirs() -> None:
+    """Register CUDA DLL dirs that exist NOW. Called at import and again from
+    load_model — on the very first GPU launch, ensure_cuda downloads the DLLs
+    after this module was imported."""
+    roots = (BASE, BUNDLE) if FROZEN else (BASE / ".venv" / "Lib" / "site-packages",)
+    for root in roots:
+        for pkg in ("nvidia/cublas/bin", "nvidia/cudnn/bin"):
+            p = root / pkg
+            if p.is_dir() and str(p) not in _dll_dirs_added:
+                _dll_dirs_added.add(str(p))
+                os.add_dll_directory(str(p))
+                os.environ["PATH"] = str(p) + os.pathsep + os.environ["PATH"]
+
+
+_add_dll_dirs()
 
 import numpy as np
 from faster_whisper import WhisperModel
@@ -31,6 +44,7 @@ JUNK = {
 VAD = CONFIG["asr"].get("vad", True)
 
 def load_model() -> tuple[WhisperModel, str]:
+    _add_dll_dirs()  # CUDA DLLs may have been downloaded since import
     # Degradation ladder so Vanni runs on low-performance laptops too: GPU model
     # -> lighter GPU model -> small.en on CPU. Built at call time (not import)
     # so a wizard/tray tier change applies to the next load without a restart.
