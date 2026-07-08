@@ -48,6 +48,11 @@ def _strip_fillers(text: str) -> str:
     return re.sub(r"\s{2,}", " ", text).strip()
 
 
+def _words(text: str) -> list[str]:
+    """Word tokens only — case/punctuation-insensitive fidelity comparison."""
+    return re.findall(r"[a-z0-9]+", text.lower())
+
+
 def _generate(prompt: str, model: str, timeout: float = 15.0, *,
               system: str = SYSTEM_PROMPT, options: dict | None = None) -> str:
     if options is None:
@@ -144,8 +149,13 @@ def clean(text: str) -> tuple[str, str]:
             return text, "degraded"
     except requests.RequestException:
         return text, "degraded"  # ponytail: degrade to raw, never block dictation
-    # guard against a chatty model returning empty or something wildly off-length
-    if not cleaned or len(cleaned) > len(text) * 3:
+    # fidelity gate: the transcript rides in the prompt slot, so an instruct
+    # model can refuse it, answer it, or complete it (e.g. "write a script
+    # that..." -> actual code) instead of punctuating. Cleanup may ONLY change
+    # punctuation/casing, so any output whose word sequence differs from the
+    # input is discarded and the raw transcript pastes instead — transcription
+    # stays literal no matter what the model emits.
+    if not cleaned or _words(cleaned) != _words(text):
         return text, "degraded"
     return cleaned, "ok"
 
