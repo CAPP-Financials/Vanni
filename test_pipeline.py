@@ -98,6 +98,15 @@ def test_formatter_fidelity_gate():
         formatter._generate = lambda *a, **k: good
         out, status = formatter.clean(raw)
         assert (out, status) == (good, "ok"), f"faithful output rejected: {out!r}"
+        # non-Latin scripts: gate must still compare words (a [a-z0-9]-only
+        # tokenizer sees Hindi as [] == [] and waves paraphrase through)
+        hindi = "मुझे बताओ कि कल मीटिंग कितने बजे है और कौन कौन आ रहा है क्योंकि मुझे तैयारी करनी है"
+        formatter._generate = lambda *a, **k: "कल की मीटिंग के बारे में जानकारी चाहिए।"  # paraphrase
+        out, status = formatter.clean(hindi)
+        assert (out, status) == (hindi, "degraded"), f"Hindi paraphrase leaked: {out!r}"
+        formatter._generate = lambda *a, **k: hindi + "?"
+        out, status = formatter.clean(hindi)
+        assert status == "ok", "faithful Hindi output rejected"
     finally:
         formatter._generate = orig
 

@@ -49,8 +49,10 @@ def _strip_fillers(text: str) -> str:
 
 
 def _words(text: str) -> list[str]:
-    """Word tokens only — case/punctuation-insensitive fidelity comparison."""
-    return re.findall(r"[a-z0-9]+", text.lower())
+    """Word tokens only — case/punctuation-insensitive fidelity comparison.
+    [^\\W_] not [a-z0-9]: transcripts can be Hindi/CJK/etc., and a gate that
+    tokenizes those to [] would wave any LLM output through."""
+    return re.findall(r"[^\W_]+", text.lower())
 
 
 def _generate(prompt: str, model: str, timeout: float = 15.0, *,
