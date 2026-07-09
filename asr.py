@@ -54,12 +54,18 @@ def load_model() -> tuple[WhisperModel, str]:
         ("small.en", "cpu", "int8"),
     ]
     last_err = None
-    for name, device, compute in fallbacks:
-        try:
-            model = WhisperModel(name, device=device, compute_type=compute)
-            return model, f"{name} ({device}/{compute})"
-        except Exception as e:  # CUDA/VRAM/download failure -> next tier
-            last_err = e
+    # offline first: local_files_only skips the HF Hub revision check entirely —
+    # no unauthenticated/Xet warnings, ~2s faster start, and truly offline once
+    # cached. The online pass runs only when the ladder is fully cold (genuine
+    # first launch), still downloading the primary tier first.
+    for local_only in (True, False):
+        for name, device, compute in fallbacks:
+            try:
+                model = WhisperModel(name, device=device, compute_type=compute,
+                                     local_files_only=local_only)
+                return model, f"{name} ({device}/{compute})"
+            except Exception as e:  # not-cached / CUDA / VRAM / download -> next
+                last_err = e
     raise RuntimeError(f"no ASR model could be loaded: {last_err}")
 
 

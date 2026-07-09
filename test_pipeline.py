@@ -25,6 +25,48 @@ def test_asr():
     assert latency < 1.0, f"latency {latency:.2f}s >= 1.0s"
 
 
+def test_asr_offline_first():
+    # load_model must try the cached model OFFLINE first (no HF Hub round-trip,
+    # no unauthenticated/Xet warnings, ~2s faster) and only reach the network
+    # when nothing is cached. Monkeypatch WhisperModel to record local_files_only.
+    import asr
+    calls = []
+
+    class FakeModel:  # simulates a warm cache: offline load succeeds
+        def __init__(self, name, device, compute_type, local_files_only=False):
+            calls.append(local_files_only)
+            if not local_files_only:
+                raise AssertionError("hit the network when the model was cached")
+
+    orig = asr.WhisperModel
+    asr.WhisperModel = FakeModel
+    try:
+        asr.load_model()
+    finally:
+        asr.WhisperModel = orig
+    assert calls[0] is True, "first ASR load must be offline (local_files_only=True)"
+
+    # cold cache: every offline attempt raises -> must fall through to a download pass
+    calls.clear()
+
+    class ColdModel:
+        def __init__(self, name, device, compute_type, local_files_only=False):
+            calls.append(local_files_only)
+            if local_files_only:
+                raise RuntimeError("not cached")
+
+    asr.WhisperModel = ColdModel
+    try:
+        try:
+            asr.load_model()
+        except RuntimeError:
+            pass
+    finally:
+        asr.WhisperModel = orig
+    assert True in calls and False in calls, "cold cache must reach the online download pass"
+    print("  offline-first: local_files_only tried first, download only when cold")
+
+
 def test_asr_silence():
     import asr
     model, _ = asr.load_model()
@@ -585,7 +627,7 @@ def test_injection():
     assert pyperclip.paste() == sentinel, "clipboard did not retain the text"
 
 
-ALL = [test_asr, test_asr_silence, test_formatter_short_skips, test_formatter_cleans,
+ALL = [test_asr, test_asr_offline_first, test_asr_silence, test_formatter_short_skips, test_formatter_cleans,
        test_formatter_fidelity_gate, test_formatter_ollama_down, test_transform, test_corrections, test_history, test_hotwords,
        test_smartfmt, test_snippets, test_hw_recommend, test_config_set,
        test_apply_tier, test_wizard_gate, test_ensure_cuda,
